@@ -1,0 +1,60 @@
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.18
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+psycopg2-binary==2.9.10
+
+# Cache / Message Queue
+redis==5.2.1
+celery[redis]==5.4.0
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+pyotp==2.9.0
+qrcode[pil]==8.0
+cryptography==43.0.3
+
+# Data validation
+pydantic==2.10.2
+pydantic-settings==2.6.1
+email-validator==2.2.0
+
+# Azure SDK
+azure-storage-blob==12.23.1
+azure-keyvault-secrets==4.9.0
+azure-identity==1.19.0
+
+# HTTP client
+httpx==0.28.0
+
+# PDF generation
+reportlab==4.2.5
+pypdf==5.1.0
+
+# Notifications
+sendgrid==6.11.0
+
+# Utilities
+python-dateutil==2.9.0.post0
+phonenumbers==8.13.50
+babel==2.16.0
+
+# Observability
+opentelemetry-api==1.28.2
+opentelemetry-sdk==1.28.2
+opentelemetry-instrumentation-fastapi==0.49b2
+opentelemetry-exporter-otlp==1.28.2
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-env==1.1.5
+httpx==0.28.0
+factory-boy==3.3.1
+faker==33.1.0
