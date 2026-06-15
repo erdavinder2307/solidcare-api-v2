@@ -7,8 +7,12 @@ import uuid
 from dataclasses import dataclass
 
 from app.core.events.bus import DomainEvent, event_bus
+from app.core.notifications.writer import create_in_app_notification
+from app.modules.notifications.models import NotificationType
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
 @dataclass
@@ -60,23 +64,51 @@ class InvoiceGenerated(DomainEvent):
 
 @event_bus.subscribe(AppointmentBooked)
 async def on_appointment_booked(event: AppointmentBooked) -> None:
-    logger.info(
-        "NOTIFICATION: Appointment booked – sending confirmation to patient %s",
+    logger.info("NOTIFICATION: Appointment booked for patient %s", event.patient_id)
+    await create_in_app_notification(
+        DEFAULT_ORG_ID,
+        None,
+        NotificationType.APPOINTMENT_BOOKED,
+        "Appointment booked",
+        f"Appointment on {event.appointment_date} at {event.appointment_time}",
         event.patient_id,
     )
-    # Celery task will be dispatched here in Phase 8
 
 
 @event_bus.subscribe(AppointmentCancelled)
 async def on_appointment_cancelled(event: AppointmentCancelled) -> None:
     logger.info("NOTIFICATION: Appointment %s cancelled", event.appointment_id)
+    await create_in_app_notification(
+        DEFAULT_ORG_ID,
+        None,
+        NotificationType.APPOINTMENT_CANCELLED,
+        "Appointment cancelled",
+        event.reason or "Appointment was cancelled",
+        event.patient_id,
+    )
 
 
 @event_bus.subscribe(PrescriptionGenerated)
 async def on_prescription_generated(event: PrescriptionGenerated) -> None:
     logger.info("NOTIFICATION: Prescription %s ready", event.prescription_id)
+    await create_in_app_notification(
+        DEFAULT_ORG_ID,
+        None,
+        NotificationType.PRESCRIPTION_READY,
+        "Prescription ready",
+        "A prescription has been finalized and is ready",
+        event.patient_id,
+    )
 
 
 @event_bus.subscribe(InvoiceGenerated)
 async def on_invoice_generated(event: InvoiceGenerated) -> None:
     logger.info("NOTIFICATION: Invoice %s generated for ₹%.2f", event.invoice_id, event.amount)
+    await create_in_app_notification(
+        DEFAULT_ORG_ID,
+        None,
+        NotificationType.INVOICE_GENERATED,
+        "Invoice generated",
+        f"Invoice for ₹{event.amount:.2f} has been issued",
+        event.patient_id,
+    )

@@ -30,7 +30,11 @@ class CurrentUser:
         self.is_superadmin = is_superadmin
 
     def can(self, permission: str) -> bool:
-        return self.is_superadmin or permission in self.permissions
+        return (
+            self.is_superadmin
+            or "superadmin" in self.roles
+            or permission in self.permissions
+        )
 
     def require(self, permission: str) -> None:
         if not self.can(permission):
@@ -53,6 +57,7 @@ async def get_current_user(
             clinic_ids=payload.get("clinic_ids", []),
             permissions=payload.get("permissions", []),
             roles=payload.get("roles", []),
+            is_superadmin=payload.get("is_superadmin", False),
         )
     except (KeyError, ValueError) as exc:
         raise UnauthorizedError("Malformed token") from exc

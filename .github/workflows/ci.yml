@@ -1,10 +1,15 @@
-name: API CI
+name: API CI/CD
 
 on:
   push:
     branches: [develop, main]
   pull_request:
     branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: api-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-and-type-check:
@@ -82,3 +87,68 @@ jobs:
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH
+
+  build-package:
+    name: Build Deployment Package
+    runs-on: ubuntu-latest
+    needs: [lint-and-type-check, test]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build offline App Service package
+        run: bash scripts/azure/build-deploy-package.sh "$RUNNER_TEMP/api-package"
+
+      - name: Create zip
+        run: cd "$RUNNER_TEMP/api-package" && zip -r "$RUNNER_TEMP/solidcare-api.zip" .
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-deploy-package
+          path: ${{ runner.temp }}/solidcare-api.zip
+          retention-days: 7
+
+  deploy-dev:
+    name: Deploy to Azure App Service (Dev)
+    runs-on: ubuntu-latest
+    needs: build-package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: api-deploy-package
+          path: artifact
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy zip to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: solidcare-api-dev
+          package: artifact/solidcare-api.zip
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 24); do
+            if curl -sf --max-time 30 "https://solidcare-api-dev.azurewebsites.net/health" | grep -q healthy; then
+              echo "API healthy"
+              exit 0
+            fi
+            echo "Waiting for API warm-up ($i/24)..."
+            sleep 15
+          done
+          echo "Health check timed out"
+          exit 1

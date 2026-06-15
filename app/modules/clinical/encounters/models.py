@@ -69,6 +69,11 @@ class Encounter(BaseModel):
     # PDF
     summary_pdf_path: Mapped[str | None] = mapped_column(Text)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Digital attestation
+    attested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    attested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     appointment: Mapped["Appointment | None"] = relationship("Appointment", back_populates="encounter")
     vitals: Mapped[list["Vital"]] = relationship("Vital", back_populates="encounter")

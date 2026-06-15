@@ -1,10 +1,11 @@
 """
 Simple Redis-backed sliding window rate limiter.
+
+Skipped when REDIS_ENABLED=false (minimum-cost demo deployments without Redis).
 """
 
 import time
 
-import redis.asyncio as aioredis
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
@@ -15,11 +16,18 @@ AUTH_PATHS = {"/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/passw
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, redis_url: str = settings.REDIS_URL) -> None:
+    def __init__(self, app) -> None:
         super().__init__(app)
-        self._redis = aioredis.from_url(redis_url, decode_responses=True)
+        self._redis = None
+        if settings.REDIS_ENABLED:
+            import redis.asyncio as aioredis
+
+            self._redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
     async def dispatch(self, request: Request, call_next):
+        if settings.ENV == "test" or not settings.REDIS_ENABLED or self._redis is None:
+            return await call_next(request)
+
         client_ip = request.client.host if request.client else "unknown"
         path = request.url.path
         is_auth = any(path.startswith(p) for p in AUTH_PATHS)

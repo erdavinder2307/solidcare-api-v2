@@ -14,6 +14,12 @@ cp .env.example .env
 # Run migrations
 alembic upgrade head
 
+# Seed demo admin user (optional, for local dev)
+docker exec -i solidcare_db psql -U solidcare -d solidcare_dev < scripts/seed_dev_admin.sql
+
+# Seed RBAC role users for local dev / E2E (see scripts/seed_dev_rbac_users.sql)
+docker exec -i solidcare_db psql -U solidcare -d solidcare_dev < scripts/seed_dev_rbac_users.sql
+
 # Start the server
 uvicorn app.main:app --reload
 ```

@@ -111,3 +111,17 @@ class ConsentUpdate(BaseModel):
     consent_type: ConsentType
     consented: bool
     notes: str | None = None
+
+
+class PatientDocumentResponse(BaseModel):
+    id: uuid.UUID
+    patient_id: uuid.UUID
+    document_type: DocumentType
+    file_name: str
+    content_type: str | None
+    file_size_bytes: int | None
+    notes: str | None
+    created_at: datetime
+    download_url: str | None = None
+
+    model_config = {"from_attributes": True}

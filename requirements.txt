@@ -1,6 +1,7 @@
 # Web framework
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
+gunicorn==23.0.0
 python-multipart==0.0.18
 
 # Database
@@ -16,6 +17,7 @@ celery[redis]==5.4.0
 # Authentication & Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1  # passlib 1.7.4 breaks with bcrypt 5.x
 pyotp==2.9.0
 qrcode[pil]==8.0
 cryptography==43.0.3
@@ -26,7 +28,8 @@ pydantic-settings==2.6.1
 email-validator==2.2.0
 
 # Azure SDK
-azure-storage-blob==12.23.1
+azure-storage-blob[aio]==12.23.1
+aiohttp>=3.9.0
 azure-keyvault-secrets==4.9.0
 azure-identity==1.19.0
 

@@ -1,8 +1,9 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.modules.auth.dependencies import AuthRequired, get_current_user
 from app.modules.auth.repository import AuthRepository
@@ -31,11 +32,11 @@ def get_auth_service(session: Annotated[AsyncSession, Depends(get_db)]) -> AuthS
 async def login(
     payload: LoginRequest,
     service: Annotated[AuthService, Depends(get_auth_service)],
+    x_org_id: Annotated[str | None, Header(alias="X-Org-Id")] = None,
 ) -> TokenResponse:
     import uuid
-    # In a real multi-tenant setup the org_id would come from subdomain or header.
-    # For now we use a placeholder that the frontend passes as X-Org-Id header.
-    org_id = uuid.UUID("00000000-0000-0000-0000-000000000001")  # default org
+
+    org_id = uuid.UUID(x_org_id) if x_org_id else uuid.UUID("00000000-0000-0000-0000-000000000001")
     return await service.login(payload.email, payload.password, org_id)
 
 
@@ -89,3 +90,38 @@ async def disable_mfa(
 ) -> dict:
     await service.disable_mfa(current_user.user_id, payload.totp_code)
     return {"message": "MFA disabled successfully"}
+
+
+@router.post("/change-password", summary="Change password for authenticated user")
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user: AuthRequired,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> dict:
+    await service.change_password(current_user.user_id, payload.current_password, payload.new_password)
+    return {"message": "Password changed successfully"}
+
+
+@router.post("/password-reset", summary="Request password reset token")
+async def password_reset(
+    payload: PasswordResetRequest,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+    x_org_id: Annotated[str | None, Header(alias="X-Org-Id")] = None,
+) -> dict:
+    import uuid
+
+    org_id = uuid.UUID(x_org_id) if x_org_id else uuid.UUID("00000000-0000-0000-0000-000000000001")
+    token = await service.request_password_reset(payload.email, org_id)
+    response: dict = {"message": "If the email exists, a reset link has been sent"}
+    if token and settings.is_development:
+        response["reset_token"] = token
+    return response
+
+
+@router.post("/password-reset/confirm", summary="Confirm password reset")
+async def password_reset_confirm(
+    payload: PasswordResetConfirm,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> dict:
+    await service.confirm_password_reset(payload.token, payload.new_password)
+    return {"message": "Password reset successfully"}

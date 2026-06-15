@@ -11,6 +11,7 @@ from app.modules.doctors.repository import DoctorRepository
 from app.modules.doctors.schemas import (
     ClinicAssignmentCreate,
     DoctorCreate,
+    DoctorRegisterCreate,
     DoctorResponse,
     DoctorUpdate,
     ScheduleCreate,
@@ -33,7 +34,18 @@ async def create_doctor(
 ) -> DoctorResponse:
     current_user.require("doctor:create")
     doctor = await service.create(current_user.org_id, payload, current_user.user_id)
-    return DoctorResponse.model_validate(doctor)
+    return DoctorResponse.from_doctor(doctor)
+
+
+@router.post("/register", response_model=DoctorResponse, status_code=201)
+async def register_doctor(
+    payload: DoctorRegisterCreate,
+    current_user: AuthRequired,
+    service: Annotated[DoctorService, Depends(get_doctor_service)],
+) -> DoctorResponse:
+    current_user.require("doctor:create")
+    doctor = await service.register(current_user.org_id, payload, current_user.user_id)
+    return DoctorResponse.from_doctor(doctor)
 
 
 @router.get("", response_model=list[DoctorResponse])
@@ -43,7 +55,7 @@ async def list_doctors(
 ) -> list[DoctorResponse]:
     current_user.require("doctor:read")
     doctors = await service.list_doctors(current_user.org_id)
-    return [DoctorResponse.model_validate(d) for d in doctors]
+    return [DoctorResponse.from_doctor(d) for d in doctors]
 
 
 @router.get("/{doctor_id}", response_model=DoctorResponse)
@@ -54,7 +66,7 @@ async def get_doctor(
 ) -> DoctorResponse:
     current_user.require("doctor:read")
     doctor = await service.get(doctor_id, current_user.org_id)
-    return DoctorResponse.model_validate(doctor)
+    return DoctorResponse.from_doctor(doctor)
 
 
 @router.patch("/{doctor_id}", response_model=DoctorResponse)
@@ -66,7 +78,7 @@ async def update_doctor(
 ) -> DoctorResponse:
     current_user.require("doctor:update")
     doctor = await service.update(doctor_id, current_user.org_id, payload)
-    return DoctorResponse.model_validate(doctor)
+    return DoctorResponse.from_doctor(doctor)
 
 
 @router.post("/{doctor_id}/schedules", response_model=ScheduleResponse, status_code=201)

@@ -85,6 +85,27 @@ class AuthRepository:
         )
         return list(set(result.scalars().all()))
 
+    async def get_user_clinic_ids(self, user_id: uuid.UUID) -> list[uuid.UUID]:
+        result = await self.session.execute(
+            select(UserRole.clinic_id).where(
+                UserRole.user_id == user_id,
+                UserRole.clinic_id.is_not(None),
+                UserRole.deleted_at.is_(None),
+            )
+        )
+        clinic_ids = [row[0] for row in result.all() if row[0]]
+        if clinic_ids:
+            return list(set(clinic_ids))
+
+        from app.modules.doctors.models import Doctor, DoctorClinicAssignment
+
+        doctor_result = await self.session.execute(
+            select(DoctorClinicAssignment.clinic_id)
+            .join(Doctor, Doctor.id == DoctorClinicAssignment.doctor_id)
+            .where(Doctor.user_id == user_id, Doctor.deleted_at.is_(None))
+        )
+        return list(set(row[0] for row in doctor_result.all() if row[0]))
+
 
 # Import the missing model here to avoid circular imports
 from app.modules.users.models import RolePermission  # noqa: E402

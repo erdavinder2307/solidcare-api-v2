@@ -1,10 +1,8 @@
 import uuid
 from datetime import timedelta
 
-import redis.asyncio as aioredis
-
 from app.config import settings
-from app.core.exceptions.errors import ForbiddenError, UnauthorizedError
+from app.core.exceptions.errors import ForbiddenError, NotFoundError, UnauthorizedError
 from app.core.security.jwt import (
     create_access_token,
     create_mfa_token,
@@ -29,7 +27,11 @@ MAX_FAILED_ATTEMPTS = 5
 class AuthService:
     def __init__(self, repository: AuthRepository) -> None:
         self.repo = repository
-        self._redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        self._redis = None
+        if settings.REDIS_ENABLED:
+            import redis.asyncio as aioredis
+
+            self._redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
     async def login(self, email: str, password: str, org_id: uuid.UUID) -> TokenResponse:
         user = await self.repo.get_user_by_email(email.lower(), org_id)
@@ -87,9 +89,10 @@ class AuthService:
             raise UnauthorizedError("Invalid refresh token")
 
         jti = payload.get("jti")
-        is_revoked = await self._redis.get(f"revoked:refresh:{jti}")
-        if is_revoked:
-            raise UnauthorizedError("Token has been revoked")
+        if self._redis:
+            is_revoked = await self._redis.get(f"revoked:refresh:{jti}")
+            if is_revoked:
+                raise UnauthorizedError("Token has been revoked")
 
         user_id = uuid.UUID(payload["sub"])
         user = await self.repo.get_user_by_id(user_id)
@@ -102,7 +105,7 @@ class AuthService:
         try:
             payload = decode_token(refresh_token)
             jti = payload.get("jti")
-            if jti:
+            if jti and self._redis:
                 ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
                 await self._redis.setex(f"revoked:refresh:{jti}", ttl, "1")
         except Exception:
@@ -149,21 +152,61 @@ class AuthService:
         await self.repo.disable_mfa(user_id)
         return True
 
+    async def change_password(
+        self, user_id: uuid.UUID, current_password: str, new_password: str
+    ) -> None:
+        user = await self.repo.get_user_by_id(user_id)
+        if not user:
+            raise UnauthorizedError("User not found")
+        if not verify_password(current_password, user.hashed_password):
+            raise UnauthorizedError("Current password is incorrect")
+        user.hashed_password = hash_password(new_password)
+
+    async def request_password_reset(self, email: str, org_id: uuid.UUID) -> str | None:
+        user = await self.repo.get_user_by_email(email.lower(), org_id)
+        if not user:
+            return None
+        import secrets
+
+        if not self._redis:
+            return None  # Password reset requires Redis; unavailable in demo mode
+
+        token = secrets.token_urlsafe(32)
+        ttl = 3600
+        await self._redis.setex(f"pwd_reset:{token}", ttl, str(user.id))
+        return token
+
+    async def confirm_password_reset(self, token: str, new_password: str) -> None:
+        if not self._redis:
+            raise UnauthorizedError("Password reset is unavailable in demo mode")
+
+        user_id_str = await self._redis.get(f"pwd_reset:{token}")
+        if not user_id_str:
+            raise UnauthorizedError("Invalid or expired reset token")
+        user = await self.repo.get_user_by_id(uuid.UUID(user_id_str))
+        if not user:
+            raise NotFoundError("User", user_id_str)
+        user.hashed_password = hash_password(new_password)
+        await self._redis.delete(f"pwd_reset:{token}")
+
     async def _issue_tokens(self, user: User) -> TokenResponse:
         permissions = await self.repo.get_user_permissions(user.id)
         roles = await self.repo.get_user_roles(user.id)
+        clinic_ids = await self.repo.get_user_clinic_ids(user.id)
 
         access_token = create_access_token(
             subject=user.email,
             user_id=user.id,
             org_id=user.organization_id,
-            clinic_ids=[],
+            clinic_ids=[str(c) for c in clinic_ids],
             permissions=permissions,
             roles=roles,
+            is_superadmin=user.is_superadmin,
         )
         refresh_token, jti = create_refresh_token(user.id)
-        ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
-        await self._redis.setex(f"refresh:{jti}", ttl, str(user.id))
+        if self._redis:
+            ttl = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
+            await self._redis.setex(f"refresh:{jti}", ttl, str(user.id))
         await self.repo.update_last_login(user.id)
 
         return TokenResponse(

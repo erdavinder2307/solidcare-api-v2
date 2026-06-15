@@ -43,6 +43,7 @@ class EncounterRepository:
                 Encounter.organization_id == org_id,
                 Encounter.deleted_at.is_(None),
             )
+            .options(selectinload(Encounter.vitals), selectinload(Encounter.diagnoses))
             .order_by(Encounter.encounter_date.desc())
         )
         return await paginate(self.session, query, params)

@@ -11,12 +11,14 @@ from app.modules.appointments.schemas import (
     AppointmentStatusUpdate,
     AppointmentUpdate,
 )
+from app.modules.patients.repository import PatientRepository
 from app.shared.schemas.pagination import PaginatedResponse, PaginationParams
 
 
 class AppointmentService:
-    def __init__(self, repository: AppointmentRepository) -> None:
+    def __init__(self, repository: AppointmentRepository, patient_repository: PatientRepository) -> None:
         self.repo = repository
+        self.patient_repo = patient_repository
 
     async def create(self, org_id: uuid.UUID, data: AppointmentCreate, created_by: uuid.UUID) -> Appointment:
         conflict = await self.repo.check_slot_conflict(
@@ -34,6 +36,7 @@ class AppointmentService:
         )
         appointment = await self.repo.create(appointment)
 
+        patient = await self.patient_repo.get_by_id(appointment.patient_id, org_id)
         await event_bus.publish(AppointmentBooked(
             appointment_id=appointment.id,
             patient_id=appointment.patient_id,
@@ -41,8 +44,8 @@ class AppointmentService:
             clinic_id=appointment.clinic_id,
             appointment_date=str(appointment.appointment_date),
             appointment_time=appointment.start_time,
-            patient_phone="",  # would be loaded from patient record in real impl
-            patient_email=None,
+            patient_phone=patient.phone if patient else "",
+            patient_email=patient.email if patient else None,
         ))
 
         return appointment
@@ -103,6 +106,12 @@ class AppointmentService:
 
         if data.status == AppointmentStatus.CHECKED_IN:
             appointment.checked_in_at = now
+            if appointment.token_number is None:
+                appointment.token_number = await self.repo.get_next_token(
+                    appointment.clinic_id,
+                    appointment.doctor_id,
+                    appointment.appointment_date,
+                )
         elif data.status == AppointmentStatus.IN_CONSULTATION:
             appointment.consultation_started_at = now
         elif data.status == AppointmentStatus.COMPLETED:
@@ -114,8 +123,12 @@ class AppointmentService:
             await event_bus.publish(AppointmentCancelled(
                 appointment_id=appointment.id,
                 patient_id=appointment.patient_id,
-                patient_phone="",
+                patient_phone=(await self._patient_phone(org_id, appointment.patient_id)),
                 reason=data.cancellation_notes,
             ))
 
         return appointment
+
+    async def _patient_phone(self, org_id: uuid.UUID, patient_id: uuid.UUID) -> str:
+        patient = await self.patient_repo.get_by_id(patient_id, org_id)
+        return patient.phone if patient else ""

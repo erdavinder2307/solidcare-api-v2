@@ -17,13 +17,14 @@ from app.modules.appointments.schemas import (
 )
 from app.modules.appointments.service import AppointmentService
 from app.modules.auth.dependencies import AuthRequired
+from app.modules.patients.repository import PatientRepository
 from app.shared.schemas.pagination import PaginatedResponse, PaginationParams
 
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_db)]) -> AppointmentService:
-    return AppointmentService(AppointmentRepository(session))
+    return AppointmentService(AppointmentRepository(session), PatientRepository(session))
 
 
 @router.post("", response_model=AppointmentResponse, status_code=201)

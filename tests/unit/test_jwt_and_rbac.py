@@ -40,6 +40,19 @@ def test_refresh_token_has_jti():
     assert payload["sub"] == str(user_id)
 
 
+def test_current_user_superadmin_role_bypass():
+    user = CurrentUser(
+        user_id=uuid.uuid4(),
+        email="admin@solidcare.health",
+        org_id=uuid.uuid4(),
+        clinic_ids=[],
+        permissions=[],
+        roles=["superadmin"],
+    )
+    assert user.can("patient:create")
+    user.require("patient:create")
+
+
 def test_current_user_superadmin_bypass():
     user = CurrentUser(
         user_id=uuid.uuid4(),

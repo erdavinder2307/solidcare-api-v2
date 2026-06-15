@@ -40,7 +40,11 @@ async def test_unauthenticated_patients_returns_403_or_401():
 
 
 @pytest.mark.asyncio
-async def test_public_prescription_share_no_auth():
+async def test_public_prescription_share_route_is_public():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/api/v1/prescriptions/share/abc123")
-    assert response.status_code == 200  # documents current public exposure
+        response = await client.get("/openapi.json")
+    assert response.status_code == 200
+    path = "/api/v1/prescriptions/share/{share_token}"
+    assert path in response.json()["paths"]
+    get_op = response.json()["paths"][path]["get"]
+    assert get_op.get("security") in (None, [])

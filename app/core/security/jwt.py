@@ -14,6 +14,7 @@ def create_access_token(
     clinic_ids: list[str],
     permissions: list[str],
     roles: list[str],
+    is_superadmin: bool = False,
 ) -> str:
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
@@ -25,6 +26,7 @@ def create_access_token(
         "clinic_ids": clinic_ids,
         "permissions": permissions,
         "roles": roles,
+        "is_superadmin": is_superadmin,
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "jti": str(uuid.uuid4()),

@@ -1,8 +1,15 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_INSECURE_SECRETS = {
+    "CHANGE_ME_IN_PRODUCTION",
+    "CHANGE_ME_IN_PRODUCTION_use_openssl_rand_hex_64",
+    "secret",
+    "changeme",
+}
 
 
 class Settings(BaseSettings):
@@ -26,7 +33,8 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
 
-    # Redis
+    # Redis (optional — disable for minimum-cost Azure demo deployments)
+    REDIS_ENABLED: bool = True
     REDIS_URL: str = "redis://localhost:6379/0"
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
@@ -71,13 +79,23 @@ class Settings(BaseSettings):
             return json.loads(v)
         return v
 
+    @model_validator(mode="after")
+    def validate_secrets_in_production(self) -> "Settings":
+        if self.ENV == "production":
+            if self.JWT_SECRET_KEY in _INSECURE_SECRETS or len(self.JWT_SECRET_KEY) < 32:
+                raise ValueError(
+                    "JWT_SECRET_KEY must be set to a secure random value in production. "
+                    "Generate one with: openssl rand -hex 64"
+                )
+        return self
+
     @property
     def is_production(self) -> bool:
         return self.ENV == "production"
 
     @property
     def is_development(self) -> bool:
-        return self.ENV in ("local", "development")
+        return self.ENV in ("local", "development", "test")
 
 
 @lru_cache

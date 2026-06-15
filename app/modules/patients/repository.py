@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 
 from sqlalchemy import func, or_, select
@@ -78,6 +80,41 @@ class PatientRepository:
         )
         count = result.scalar_one() or 0
         return f"PT{count + 1:06d}"
+
+    async def search_duplicates(
+        self,
+        org_id: uuid.UUID,
+        phone: str | None,
+        first_name: str | None,
+        last_name: str | None,
+        abha_number: str | None,
+    ) -> list[Patient]:
+        """Return up to 10 potential duplicate patients matching phone, name, or ABHA."""
+        conditions = [
+            Patient.organization_id == org_id,
+            Patient.deleted_at.is_(None),
+        ]
+        match_clauses = []
+        if phone:
+            match_clauses.append(Patient.phone == phone)
+        if abha_number:
+            match_clauses.append(Patient.abha_number == abha_number)
+        if first_name and last_name:
+            match_clauses.append(
+                func.lower(func.concat(Patient.first_name, " ", Patient.last_name))
+                == f"{first_name.lower()} {last_name.lower()}"
+            )
+        if not match_clauses:
+            return []
+        from sqlalchemy import or_
+        query = (
+            select(Patient)
+            .where(*conditions, or_(*match_clauses))
+            .order_by(Patient.created_at.desc())
+            .limit(10)
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
 
     async def soft_delete(self, patient_id: uuid.UUID) -> None:
         from datetime import datetime, timezone
