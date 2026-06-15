@@ -1,0 +1,41 @@
+# Slim runtime dependencies for App Service offline zip deploy (F1-friendly).
+# Full dev/test deps remain in requirements.txt.
+
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+gunicorn==23.0.0
+python-multipart==0.0.27
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# Authentication & Security
+python-jose[cryptography]==3.4.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+pyotp==2.9.0
+qrcode[pil]==8.0
+cryptography==46.0.5
+
+# Data validation
+pydantic==2.10.2
+pydantic-settings==2.6.1
+email-validator==2.2.0
+
+# Azure SDK
+azure-storage-blob[aio]==12.23.1
+aiohttp>=3.9.0
+azure-identity==1.19.0
+
+# HTTP client
+httpx==0.28.0
+
+# PDF generation
+reportlab==4.2.5
+pypdf==5.1.0
+
+# Utilities
+python-dateutil==2.9.0.post0

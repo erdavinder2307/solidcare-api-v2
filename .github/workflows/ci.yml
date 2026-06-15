@@ -138,6 +138,8 @@ jobs:
       id-token: write
       contents: read
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: api-deploy-package
@@ -150,33 +152,12 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Configure App Service for offline zip deploy
+      - name: Deploy via run-from-package (blob)
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
         run: |
-          az webapp config appsettings set \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --settings \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=false \
-              ENABLE_ORYX_BUILD=false \
-              WEBSITES_CONTAINER_START_TIME_LIMIT=1800 \
-              PYTHONPATH="/home/site/wwwroot:/home/site/wwwroot/.python_packages/lib/site-packages"
-
-          az webapp config set \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --startup-file "startup.sh"
-
-      - name: Deploy zip to App Service
-        run: |
-          az webapp deploy \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_WEBAPP_NAME" \
-            --src-path artifact/solidcare-api.zip \
-            --type zip \
-            --async false \
-            --timeout 1800000 \
-            --track-status true \
-            --clean true
+          chmod +x scripts/azure/deploy-run-from-package.sh
+          bash scripts/azure/deploy-run-from-package.sh artifact/solidcare-api.zip
 
       - name: Health check
         run: |

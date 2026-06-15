@@ -20,8 +20,8 @@ cp -R \
   "$API_ROOT/.deployment" \
   "$OUT/"
 
-# Runtime-only dependencies — omit pytest/factory-boy/faker from the deploy zip.
-grep -vE '^(pytest|factory-boy|faker)' "$API_ROOT/requirements.txt" > "$OUT/requirements.txt"
+# Offline deploy uses slim runtime deps to keep the zip small enough for F1 Kudu.
+cp "$API_ROOT/requirements-deploy.txt" "$OUT/requirements.txt"
 
 chmod +x "$OUT/startup.sh"
 
