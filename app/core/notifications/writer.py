@@ -1,7 +1,7 @@
 """Persist in-app notifications from domain events."""
 
-import uuid
 import logging
+import uuid
 
 from app.database import get_db_context
 from app.modules.notifications.models import NotificationType

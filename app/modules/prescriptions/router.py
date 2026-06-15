@@ -104,8 +104,9 @@ async def download_prescription_pdf(
         from app.core.exceptions.errors import NotFoundError
         raise NotFoundError("PDF", str(prescription_id))
     try:
-        from app.core.storage.blob_service import get_sas_url
         from fastapi.responses import RedirectResponse
+
+        from app.core.storage.blob_service import get_sas_url
         url = await get_sas_url(rx.pdf_path)
         return RedirectResponse(url=url)
     except Exception:

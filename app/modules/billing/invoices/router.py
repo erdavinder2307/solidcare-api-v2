@@ -9,7 +9,7 @@ from app.database import get_db
 from app.modules.auth.dependencies import AuthRequired
 from app.modules.billing.invoices.models import InvoiceStatus
 from app.modules.billing.repository import InvoiceRepository, PaymentRepository
-from app.modules.billing.schemas import InvoiceCreate, InvoiceListItem, InvoiceResponse, PaymentCreate, PaymentResponse
+from app.modules.billing.schemas import InvoiceCreate, InvoiceListItem, InvoiceResponse
 from app.modules.billing.service import BillingService
 from app.modules.patients.repository import PatientRepository
 from app.shared.schemas.pagination import PaginatedResponse, PaginationParams

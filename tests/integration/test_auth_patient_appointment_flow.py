@@ -12,10 +12,9 @@ os.environ.setdefault("ENV", "test")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-ci-only")
 
 import app.register_models  # noqa: F401
-
 from app.core.security.password import hash_password
-from app.modules.organizations.models import Organization, OrganizationStatus, SubscriptionPlan
 from app.modules.clinics.models import Clinic, ClinicType
+from app.modules.organizations.models import Organization, OrganizationStatus, SubscriptionPlan
 from app.modules.users.models import Role, User, UserRole, UserStatus
 
 ORG_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -97,7 +96,6 @@ async def seed_flow_data(session: AsyncSession) -> None:
 
 
 @pytest.mark.usefixtures("setup_database")
-@pytest.mark.asyncio
 async def test_login_create_patient_and_appointment(client: AsyncClient, db_session: AsyncSession):
     await seed_flow_data(db_session)
 

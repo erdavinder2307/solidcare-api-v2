@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,7 @@ class AuthRepository:
         await self.session.execute(
             update(User)
             .where(User.id == user_id)
-            .values(last_login_at=datetime.now(timezone.utc), failed_login_attempts=0)
+            .values(last_login_at=datetime.now(UTC), failed_login_attempts=0)
         )
 
     async def increment_failed_attempts(self, user_id: uuid.UUID) -> int:

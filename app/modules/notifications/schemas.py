@@ -3,7 +3,11 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.modules.notifications.models import NotificationChannel, NotificationStatus, NotificationType
+from app.modules.notifications.models import (
+    NotificationChannel,
+    NotificationStatus,
+    NotificationType,
+)
 
 
 class NotificationResponse(BaseModel):

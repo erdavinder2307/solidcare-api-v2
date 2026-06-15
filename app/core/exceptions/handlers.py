@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
@@ -23,7 +23,7 @@ def _problem_detail(
         "error_code": error_code,
         "detail": detail,
         "path": str(request.url.path),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
     if errors:
         body["errors"] = errors

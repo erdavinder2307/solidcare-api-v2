@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.users.models import Role, User, UserRole
+from app.modules.users.models import User, UserRole
 
 
 class UserRepository:

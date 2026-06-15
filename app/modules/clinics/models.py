@@ -1,8 +1,9 @@
 import uuid
 from enum import Enum
 
-from sqlalchemy import Boolean, String, Text, Time, ForeignKey, Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.shared.models.base import BaseModel

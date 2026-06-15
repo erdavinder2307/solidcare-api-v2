@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,10 +30,10 @@ class AuditRepository:
         if action:
             query = query.where(AuditLog.action == action)
         if from_date:
-            start = datetime.combine(from_date, time.min, tzinfo=timezone.utc)
+            start = datetime.combine(from_date, time.min, tzinfo=UTC)
             query = query.where(AuditLog.created_at >= start)
         if to_date:
-            end = datetime.combine(to_date, time.max, tzinfo=timezone.utc)
+            end = datetime.combine(to_date, time.max, tzinfo=UTC)
             query = query.where(AuditLog.created_at <= end)
 
         count_q = select(func.count()).select_from(query.subquery())

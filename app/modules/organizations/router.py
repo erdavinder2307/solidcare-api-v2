@@ -3,12 +3,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.modules.auth.dependencies import AuthRequired
 from app.modules.organizations.models import Organization
-from sqlalchemy import select
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
 

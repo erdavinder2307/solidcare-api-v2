@@ -1,13 +1,11 @@
 """Static/unit tests for JWT and RBAC helpers — no database required."""
 
 import uuid
-from datetime import timedelta
 
 import pytest
 
 pytest.importorskip("jose")
 
-from app.config import settings
 from app.core.security.jwt import create_access_token, create_refresh_token, decode_token
 from app.modules.auth.dependencies import CurrentUser
 

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.patients.models import Patient, PatientConsent, PatientDocument
+from app.modules.patients.models import Patient, PatientConsent
 from app.shared.schemas.pagination import PaginationParams
 from app.shared.utils.pagination import paginate
 
@@ -117,12 +118,13 @@ class PatientRepository:
         return list(result.scalars().all())
 
     async def soft_delete(self, patient_id: uuid.UUID) -> None:
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from sqlalchemy import update
         await self.session.execute(
             update(Patient)
             .where(Patient.id == patient_id)
-            .values(deleted_at=datetime.now(timezone.utc))
+            .values(deleted_at=datetime.now(UTC))
         )
 
     async def add_consent(self, consent: PatientConsent) -> PatientConsent:

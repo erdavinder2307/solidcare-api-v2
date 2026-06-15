@@ -1,5 +1,4 @@
 import uuid
-from datetime import date
 
 from app.modules.audit.repository import AuditRepository
 from app.shared.schemas.pagination import PaginatedResponse, PaginationParams

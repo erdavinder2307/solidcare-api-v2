@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 
@@ -16,7 +16,7 @@ def create_access_token(
     roles: list[str],
     is_superadmin: bool = False,
 ) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
+    expire = datetime.now(UTC) + timedelta(
         minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
     )
     payload = {
@@ -28,7 +28,7 @@ def create_access_token(
         "roles": roles,
         "is_superadmin": is_superadmin,
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
         "jti": str(uuid.uuid4()),
         "token_type": "access",
     }
@@ -37,11 +37,11 @@ def create_access_token(
 
 def create_refresh_token(user_id: uuid.UUID) -> tuple[str, str]:
     jti = str(uuid.uuid4())
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(UTC) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": str(user_id),
         "exp": expire,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
         "jti": jti,
         "token_type": "refresh",
     }
@@ -60,7 +60,7 @@ def decode_token(token: str) -> dict:
 
 
 def create_mfa_token(user_id: uuid.UUID) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    expire = datetime.now(UTC) + timedelta(minutes=5)
     payload = {
         "sub": str(user_id),
         "exp": expire,

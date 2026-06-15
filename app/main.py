@@ -4,11 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
+# Import event handlers to register them on startup
+import app.core.events.handlers.notification_handler  # noqa: F401
 import app.register_models  # noqa: F401 — register all SQLAlchemy mappers
-
 from app.config import settings
 from app.core.exceptions.errors import SolidcareException
 from app.core.exceptions.handlers import (
@@ -20,9 +20,6 @@ from app.core.exceptions.handlers import (
 from app.core.middleware.audit import AuditMiddleware
 from app.core.middleware.rate_limit import RateLimitMiddleware
 from app.core.middleware.tenant import TenantContextMiddleware
-
-# Import event handlers to register them on startup
-import app.core.events.handlers.notification_handler  # noqa: F401
 
 logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
@@ -117,6 +114,7 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["Health"])
     async def health_check() -> dict:
         from sqlalchemy import text
+
         from app.database import AsyncSessionLocal
 
         db_status = "unconfigured"

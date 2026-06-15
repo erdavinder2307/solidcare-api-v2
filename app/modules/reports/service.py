@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,8 +20,8 @@ class ReportsService:
         self, org_id: uuid.UUID, clinic_id: uuid.UUID | None = None, report_date: date | None = None
     ) -> dict:
         target = report_date or date.today()
-        start = datetime.combine(target, time.min, tzinfo=timezone.utc)
-        end = datetime.combine(target, time.max, tzinfo=timezone.utc)
+        start = datetime.combine(target, time.min, tzinfo=UTC)
+        end = datetime.combine(target, time.max, tzinfo=UTC)
 
         appt_q = select(func.count(Appointment.id)).where(
             Appointment.organization_id == org_id,
@@ -32,7 +32,7 @@ class ReportsService:
             appt_q = appt_q.where(Appointment.clinic_id == clinic_id)
 
         checked_in_q = appt_q.where(Appointment.status.in_([AppointmentStatus.CHECKED_IN, AppointmentStatus.IN_CONSULTATION]))
-        completed_appt_q = appt_q.where(Appointment.status == AppointmentStatus.COMPLETED)
+        _completed_appt_q = appt_q.where(Appointment.status == AppointmentStatus.COMPLETED)
 
         enc_q = select(func.count(Encounter.id)).where(
             Encounter.organization_id == org_id,
@@ -213,7 +213,7 @@ class ReportsService:
             .where(
                 Payment.organization_id == org_id,
                 Payment.status == PaymentStatus.COMPLETED,
-                Payment.paid_at >= datetime.combine(start, time.min, tzinfo=timezone.utc),
+                Payment.paid_at >= datetime.combine(start, time.min, tzinfo=UTC),
                 Payment.deleted_at.is_(None),
             )
             .group_by(func.date_trunc("week", Payment.paid_at))
@@ -280,7 +280,7 @@ class ReportsService:
             .join(Encounter, Encounter.id == Diagnosis.encounter_id)
             .where(
                 Encounter.organization_id == org_id,
-                Encounter.encounter_date >= datetime.combine(since, time.min, tzinfo=timezone.utc),
+                Encounter.encounter_date >= datetime.combine(since, time.min, tzinfo=UTC),
                 Diagnosis.deleted_at.is_(None),
                 Encounter.deleted_at.is_(None),
             )

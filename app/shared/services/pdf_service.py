@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Data classes (plain, no ORM dependency)
 # ---------------------------------------------------------------------------
@@ -77,7 +76,7 @@ def _get_rl():
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import mm
         from reportlab.platypus import (
             HRFlowable,

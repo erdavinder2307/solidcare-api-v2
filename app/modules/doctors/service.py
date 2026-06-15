@@ -3,9 +3,21 @@ from datetime import date
 
 from app.core.exceptions.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.core.security.password import hash_password
-from app.modules.doctors.models import DayOfWeek, Doctor, DoctorClinicAssignment, DoctorSchedule, DoctorStatus
+from app.modules.doctors.models import (
+    DayOfWeek,
+    Doctor,
+    DoctorClinicAssignment,
+    DoctorSchedule,
+    DoctorStatus,
+)
 from app.modules.doctors.repository import DoctorRepository
-from app.modules.doctors.schemas import ClinicAssignmentCreate, DoctorCreate, DoctorRegisterCreate, DoctorUpdate, ScheduleCreate
+from app.modules.doctors.schemas import (
+    ClinicAssignmentCreate,
+    DoctorCreate,
+    DoctorRegisterCreate,
+    DoctorUpdate,
+    ScheduleCreate,
+)
 from app.modules.users.models import User, UserRole, UserStatus
 
 

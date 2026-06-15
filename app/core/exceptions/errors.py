@@ -1,4 +1,3 @@
-from http import HTTPStatus
 
 
 class SolidcareException(Exception):

@@ -11,8 +11,8 @@ In Phase 13 (SaaS), this can be swapped for Azure Service Bus.
 import asyncio
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Any, Callable, Type
+from collections.abc import Callable
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +25,9 @@ class DomainEvent:
 
 class EventBus:
     def __init__(self) -> None:
-        self._handlers: dict[Type[DomainEvent], list[Callable]] = defaultdict(list)
+        self._handlers: dict[type[DomainEvent], list[Callable]] = defaultdict(list)
 
-    def subscribe(self, event_type: Type[DomainEvent]):
+    def subscribe(self, event_type: type[DomainEvent]):
         def decorator(handler: Callable):
             self._handlers[event_type].append(handler)
             return handler

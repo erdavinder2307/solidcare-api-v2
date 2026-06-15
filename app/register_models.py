@@ -2,7 +2,11 @@
 
 from app.modules.appointments.models import Appointment  # noqa: F401
 from app.modules.audit.models import AuditLog  # noqa: F401
-from app.modules.billing.invoices.models import Invoice, InvoiceLineItem, ServiceChargeMaster  # noqa: F401
+from app.modules.billing.invoices.models import (  # noqa: F401
+    Invoice,
+    InvoiceLineItem,
+    ServiceChargeMaster,
+)
 from app.modules.billing.payments.models import Payment  # noqa: F401
 from app.modules.clinical.diagnoses.models import Diagnosis, ICD10Code  # noqa: F401
 from app.modules.clinical.encounters.models import Encounter  # noqa: F401

@@ -1,14 +1,25 @@
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, datetime
+
+from sqlalchemy import select
 
 from app.core.exceptions.errors import BusinessRuleError, NotFoundError
-from app.modules.billing.invoices.models import Invoice, InvoiceLineItem, InvoiceStatus, ServiceChargeMaster
-from app.modules.billing.payments.models import Payment, PaymentMethod, PaymentStatus
+from app.modules.billing.invoices.models import (
+    Invoice,
+    InvoiceLineItem,
+    InvoiceStatus,
+    ServiceChargeMaster,
+)
+from app.modules.billing.payments.models import Payment, PaymentStatus
 from app.modules.billing.repository import InvoiceRepository, PaymentRepository
-from app.modules.billing.schemas import InvoiceCreate, PaymentCreate, ServiceChargeMasterCreate, ServiceChargeMasterUpdate
+from app.modules.billing.schemas import (
+    InvoiceCreate,
+    PaymentCreate,
+    ServiceChargeMasterCreate,
+    ServiceChargeMasterUpdate,
+)
 from app.modules.patients.repository import PatientRepository
 from app.shared.schemas.pagination import PaginatedResponse, PaginationParams
-from sqlalchemy import select
 
 
 class BillingService:
@@ -96,12 +107,17 @@ class BillingService:
         logger = logging.getLogger(__name__)
         try:
             from sqlalchemy import select
-            from app.shared.services.pdf_service import (
-                ClinicInfo, PatientInfo, InvoiceLineItem as PdfLineItem,
-                generate_invoice_pdf,
-            )
+
             from app.modules.clinics.models import Clinic
             from app.modules.patients.models import Patient
+            from app.shared.services.pdf_service import (
+                ClinicInfo,
+                PatientInfo,
+                generate_invoice_pdf,
+            )
+            from app.shared.services.pdf_service import (
+                InvoiceLineItem as PdfLineItem,
+            )
 
             session = self.invoice_repo.session
             clinic_row = (await session.execute(
@@ -167,7 +183,7 @@ class BillingService:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Invoice PDF generation failed for %s: %s", invoice.id, exc)
 
-
+    async def get_invoice(self, invoice_id: uuid.UUID, org_id: uuid.UUID) -> Invoice:
         invoice = await self.invoice_repo.get_by_id(invoice_id, org_id)
         if not invoice:
             raise NotFoundError("Invoice", str(invoice_id))
@@ -205,7 +221,7 @@ class BillingService:
             transaction_reference=data.transaction_reference,
             notes=data.notes,
             receipt_number=receipt_number,
-            paid_at=datetime.now(timezone.utc),
+            paid_at=datetime.now(UTC),
             created_by_id=created_by,
             updated_by_id=created_by,
         )
@@ -230,7 +246,7 @@ class BillingService:
             raise BusinessRuleError(f"Cannot cancel invoice with status {invoice.status.value}")
         invoice.status = InvoiceStatus.CANCELLED
         invoice.cancellation_reason = reason
-        invoice.cancelled_at = datetime.now(timezone.utc)
+        invoice.cancelled_at = datetime.now(UTC)
         invoice.outstanding_amount = 0.0
         return invoice
 
@@ -283,8 +299,7 @@ class BillingService:
 
     async def delete_service_charge(self, charge_id: uuid.UUID, org_id: uuid.UUID) -> None:
         charge = await self._get_service_charge(charge_id, org_id)
-        from datetime import timezone as tz
-        charge.deleted_at = datetime.now(tz.utc)
+        charge.deleted_at = datetime.now(UTC)
 
     async def _get_service_charge(self, charge_id: uuid.UUID, org_id: uuid.UUID) -> ServiceChargeMaster:
         from app.modules.clinics.models import Clinic
@@ -301,11 +316,3 @@ class BillingService:
         if not charge:
             raise NotFoundError("ServiceChargeMaster", str(charge_id))
         return charge
-        invoice = await self.get_invoice(invoice_id, org_id)
-        if invoice.status in (InvoiceStatus.PAID, InvoiceStatus.CANCELLED, InvoiceStatus.REFUNDED):
-            raise BusinessRuleError(f"Cannot cancel invoice with status {invoice.status.value}")
-        invoice.status = InvoiceStatus.CANCELLED
-        invoice.cancellation_reason = reason
-        invoice.cancelled_at = datetime.now(timezone.utc)
-        invoice.outstanding_amount = 0.0
-        return invoice

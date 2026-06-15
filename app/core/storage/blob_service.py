@@ -7,6 +7,7 @@ Falls back gracefully when Azure Storage is not configured (e.g., local dev).
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 
 from app.config import settings
 
@@ -39,7 +40,7 @@ async def get_sas_url(blob_name: str) -> str:
 
     Expires after AZURE_STORAGE_BLOB_URL_EXPIRY_HOURS hours.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from azure.storage.blob import (  # type: ignore[import]
         BlobSasPermissions,
@@ -57,6 +58,6 @@ async def get_sas_url(blob_name: str) -> str:
         blob_name=blob_name,
         account_key=account_key,
         permission=BlobSasPermissions(read=True),
-        expiry=datetime.now(timezone.utc) + timedelta(hours=settings.AZURE_STORAGE_BLOB_URL_EXPIRY_HOURS),
+        expiry=datetime.now(UTC) + timedelta(hours=settings.AZURE_STORAGE_BLOB_URL_EXPIRY_HOURS),
     )
     return f"https://{account_name}.blob.core.windows.net/{settings.AZURE_STORAGE_CONTAINER_NAME}/{blob_name}?{sas_token}"

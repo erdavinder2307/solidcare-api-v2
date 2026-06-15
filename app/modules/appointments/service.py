@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.events.bus import event_bus
 from app.core.events.handlers.notification_handler import AppointmentBooked, AppointmentCancelled
@@ -101,7 +101,7 @@ class AppointmentService:
         if data.status not in valid_transitions.get(appointment.status, []):
             raise BusinessRuleError(f"Cannot transition from {appointment.status} to {data.status}")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         appointment.status = data.status
 
         if data.status == AppointmentStatus.CHECKED_IN:

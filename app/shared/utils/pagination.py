@@ -1,7 +1,7 @@
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.shared.schemas.pagination import PaginatedResponse, PaginationParams
+from app.shared.schemas.pagination import PaginationParams
 
 
 async def paginate(

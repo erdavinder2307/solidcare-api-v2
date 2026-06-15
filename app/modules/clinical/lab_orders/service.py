@@ -1,11 +1,11 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.exceptions.errors import BusinessRuleError, NotFoundError
 from app.modules.clinical.encounters.repository import EncounterRepository
 from app.modules.clinical.lab_orders.models import LabOrder, LabOrderItem, LabOrderStatus
 from app.modules.clinical.lab_orders.repository import LabOrderRepository
-from app.modules.clinical.lab_orders.schemas import LabOrderCreate
+from app.modules.clinical.lab_orders.schemas import LabOrderCreate, LabResultCreate
 
 
 class LabOrderService:
@@ -27,7 +27,7 @@ class LabOrderService:
             lab_name=data.lab_name,
             notes=data.notes,
             status=LabOrderStatus.ORDERED,
-            ordered_at=datetime.now(timezone.utc),
+            ordered_at=datetime.now(UTC),
             created_by_id=created_by,
             updated_by_id=created_by,
         )
@@ -54,9 +54,8 @@ class LabOrderService:
         return await self.repo.list_for_patient(patient_id)
 
     async def add_result(
-        self, order_id: uuid.UUID, org_id: uuid.UUID, results: list["LabResultCreate"]
+        self, order_id: uuid.UUID, org_id: uuid.UUID, results: list[LabResultCreate]
     ) -> LabOrder:
-        from app.modules.clinical.lab_orders.schemas import LabResultCreate
         from app.modules.clinical.lab_orders.models import LabResult
         order = await self.get(order_id, org_id)
         if order.status == LabOrderStatus.CANCELLED:
@@ -69,7 +68,7 @@ class LabOrderService:
             )
             self.repo.session.add(result)
         order.status = LabOrderStatus.RESULTED
-        order.resulted_at = datetime.now(timezone.utc)
+        order.resulted_at = datetime.now(UTC)
         await self.repo.session.flush()
         return await self.repo.get_by_id(order.id)
 

@@ -1,11 +1,16 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.exceptions.errors import BusinessRuleError, NotFoundError
 from app.modules.clinical.diagnoses.models import Diagnosis
 from app.modules.clinical.encounters.models import Encounter, EncounterStatus
 from app.modules.clinical.encounters.repository import EncounterRepository
-from app.modules.clinical.encounters.schemas import EncounterCreate, EncounterUpdate
+from app.modules.clinical.encounters.schemas import (
+    DiagnosisCreate,
+    EncounterCreate,
+    EncounterUpdate,
+    VitalCreate,
+)
 from app.modules.clinical.vitals.models import Vital
 from app.shared.schemas.pagination import PaginatedResponse, PaginationParams
 
@@ -17,7 +22,7 @@ class EncounterService:
     async def create(self, org_id: uuid.UUID, data: EncounterCreate, created_by: uuid.UUID) -> Encounter:
         encounter = Encounter(
             organization_id=org_id,
-            encounter_date=datetime.now(timezone.utc),
+            encounter_date=datetime.now(UTC),
             created_by_id=created_by,
             **data.model_dump(exclude={"vitals", "diagnoses"}),
         )
@@ -27,7 +32,7 @@ class EncounterService:
             vital = Vital(
                 encounter_id=encounter.id,
                 patient_id=encounter.patient_id,
-                recorded_at=datetime.now(timezone.utc),
+                recorded_at=datetime.now(UTC),
                 **data.vitals.model_dump(),
             )
             await self.repo.add_vital(vital)
@@ -61,7 +66,7 @@ class EncounterService:
         if encounter.status == EncounterStatus.COMPLETED:
             raise BusinessRuleError("Encounter is already completed")
         encounter.status = EncounterStatus.COMPLETED
-        encounter.completed_at = datetime.now(timezone.utc)
+        encounter.completed_at = datetime.now(UTC)
         await self._generate_summary_pdf(encounter, org_id)
         return encounter
 
@@ -74,7 +79,7 @@ class EncounterService:
         if encounter.attested_at is not None:
             raise BusinessRuleError("Encounter has already been attested")
         encounter.attested_by_id = user_id
-        encounter.attested_at = datetime.now(timezone.utc)
+        encounter.attested_at = datetime.now(UTC)
         return encounter
 
     async def _generate_summary_pdf(self, encounter: Encounter, org_id: uuid.UUID) -> None:
@@ -83,13 +88,16 @@ class EncounterService:
         logger = logging.getLogger(__name__)
         try:
             from sqlalchemy import select
-            from app.shared.services.pdf_service import (
-                ClinicInfo, DoctorInfo, PatientInfo,
-                generate_encounter_summary_pdf,
-            )
+
             from app.modules.clinics.models import Clinic
             from app.modules.patients.models import Patient
             from app.modules.users.models import User
+            from app.shared.services.pdf_service import (
+                ClinicInfo,
+                DoctorInfo,
+                PatientInfo,
+                generate_encounter_summary_pdf,
+            )
 
             session = self.repo.session
             clinic_row = (await session.execute(
@@ -157,7 +165,6 @@ class EncounterService:
         self, appointment_id: uuid.UUID, org_id: uuid.UUID
     ) -> "Encounter | None":
         from sqlalchemy import select
-        from app.modules.clinical.encounters.models import EncounterStatus
         result = await self.repo.session.execute(
             select(Encounter)
             .where(
@@ -171,22 +178,20 @@ class EncounterService:
         return result.scalar_one_or_none()
 
     async def add_vitals(
-        self, encounter_id: uuid.UUID, org_id: uuid.UUID, data: "VitalCreate"
-    ) -> "Vital":
-        from app.modules.clinical.encounters.schemas import VitalCreate  # noqa: F401
+        self, encounter_id: uuid.UUID, org_id: uuid.UUID, data: VitalCreate
+    ) -> Vital:
         encounter = await self.get(encounter_id, org_id)
         vital = Vital(
             encounter_id=encounter.id,
             patient_id=encounter.patient_id,
-            recorded_at=datetime.now(timezone.utc),
+            recorded_at=datetime.now(UTC),
             **data.model_dump(),
         )
         return await self.repo.add_vital(vital)
 
     async def add_diagnosis(
-        self, encounter_id: uuid.UUID, org_id: uuid.UUID, data: "DiagnosisCreate"
+        self, encounter_id: uuid.UUID, org_id: uuid.UUID, data: DiagnosisCreate
     ) -> Diagnosis:
-        from app.modules.clinical.encounters.schemas import DiagnosisCreate  # noqa: F401
         encounter = await self.get(encounter_id, org_id)
         if encounter.status == EncounterStatus.COMPLETED:
             raise BusinessRuleError("Cannot modify a completed encounter")
@@ -223,10 +228,11 @@ class EncounterService:
         """Return suggested invoice line items derived from an encounter (consultation fee, lab tests, pharmacy)."""
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
-        from app.modules.clinical.lab_orders.models import LabOrder
-        from app.modules.prescriptions.models import Prescription
-        from app.modules.doctors.models import Doctor
+
         from app.modules.clinical.encounters.schemas import InvoiceItemSuggestion
+        from app.modules.clinical.lab_orders.models import LabOrder
+        from app.modules.doctors.models import Doctor
+        from app.modules.prescriptions.models import Prescription
 
         stmt = (
             select(Encounter)

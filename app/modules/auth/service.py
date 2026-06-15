@@ -1,5 +1,4 @@
 import uuid
-from datetime import timedelta
 
 from app.config import settings
 from app.core.exceptions.errors import ForbiddenError, NotFoundError, UnauthorizedError

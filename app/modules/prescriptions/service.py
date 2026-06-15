@@ -86,14 +86,21 @@ class PrescriptionService:
         # Generate PDF
         try:
             from datetime import date
-            from app.shared.services.pdf_service import (
-                ClinicInfo, DoctorInfo, PatientInfo, PrescriptionItem as PdfItem,
-                generate_prescription_pdf,
-            )
+
+            from sqlalchemy import select
+
             from app.modules.clinics.repository import ClinicRepository
             from app.modules.patients.repository import PatientRepository
             from app.modules.users.models import User
-            from sqlalchemy import select
+            from app.shared.services.pdf_service import (
+                ClinicInfo,
+                DoctorInfo,
+                PatientInfo,
+                generate_prescription_pdf,
+            )
+            from app.shared.services.pdf_service import (
+                PrescriptionItem as PdfItem,
+            )
 
             # Load clinic
             clinic_repo = ClinicRepository(self.repo.session)

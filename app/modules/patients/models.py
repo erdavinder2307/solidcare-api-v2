@@ -2,7 +2,8 @@ import uuid
 from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Text, Enum as SAEnum
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

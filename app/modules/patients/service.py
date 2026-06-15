@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.core.audit.writer import record_audit
 from app.core.exceptions.errors import ConflictError, NotFoundError
@@ -104,8 +104,8 @@ class PatientService:
             patient_id=patient_id,
             consent_type=data.consent_type,
             consented=data.consented,
-            consented_at=datetime.now(timezone.utc) if data.consented else None,
-            revoked_at=None if data.consented else datetime.now(timezone.utc),
+            consented_at=datetime.now(UTC) if data.consented else None,
+            revoked_at=None if data.consented else datetime.now(UTC),
             notes=data.notes,
             created_by_id=recorded_by,
         )
@@ -122,8 +122,8 @@ class PatientService:
         notes: str | None,
         uploaded_by: uuid.UUID,
     ):
+        from app.core.storage.blob_service import get_sas_url, upload_bytes
         from app.modules.patients.models import DocumentType, PatientDocument
-        from app.core.storage.blob_service import upload_bytes, get_sas_url
 
         await self.get(patient_id, org_id)
         blob_name = f"patient-docs/{patient_id}/{uuid.uuid4()}_{file_name}"
@@ -146,15 +146,16 @@ class PatientService:
         await self.repo.session.flush()
         await self.repo.session.refresh(doc)
         try:
-            setattr(doc, "download_url", get_sas_url(blob_name))
+            doc.download_url = get_sas_url(blob_name)
         except Exception:
-            setattr(doc, "download_url", None)
+            doc.download_url = None
         return doc
 
     async def list_documents(self, patient_id: uuid.UUID, org_id: uuid.UUID) -> list:
         from sqlalchemy import select
-        from app.modules.patients.models import PatientDocument
+
         from app.core.storage.blob_service import get_sas_url
+        from app.modules.patients.models import PatientDocument
 
         await self.get(patient_id, org_id)
         result = await self.repo.session.execute(
@@ -168,16 +169,18 @@ class PatientService:
         docs = list(result.scalars().all())
         for doc in docs:
             try:
-                setattr(doc, "download_url", get_sas_url(doc.blob_path))
+                doc.download_url = get_sas_url(doc.blob_path)
             except Exception:
-                setattr(doc, "download_url", None)
+                doc.download_url = None
         return docs
 
     async def delete_document(self, patient_id: uuid.UUID, document_id: uuid.UUID, org_id: uuid.UUID) -> None:
+        from datetime import datetime
+
         from sqlalchemy import select
-        from app.modules.patients.models import PatientDocument
-        from datetime import datetime, timezone as tz
+
         from app.core.exceptions.errors import NotFoundError
+        from app.modules.patients.models import PatientDocument
 
         await self.get(patient_id, org_id)
         result = await self.repo.session.execute(
@@ -190,4 +193,4 @@ class PatientService:
         doc = result.scalar_one_or_none()
         if not doc:
             raise NotFoundError("PatientDocument", str(document_id))
-        doc.deleted_at = datetime.now(tz.utc)
+        doc.deleted_at = datetime.now(UTC)

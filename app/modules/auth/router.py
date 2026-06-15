@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.modules.auth.dependencies import AuthRequired, get_current_user
+from app.modules.auth.dependencies import AuthRequired
 from app.modules.auth.repository import AuthRepository
 from app.modules.auth.schemas import (
     ChangePasswordRequest,

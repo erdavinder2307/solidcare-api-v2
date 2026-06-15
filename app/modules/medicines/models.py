@@ -1,6 +1,7 @@
 from enum import Enum
 
-from sqlalchemy import Boolean, Float, String, Text, Enum as SAEnum
+from sqlalchemy import Boolean, Float, String, Text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.models.base import BaseModel

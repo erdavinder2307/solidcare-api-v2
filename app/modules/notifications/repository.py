@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,7 +54,7 @@ class NotificationRepository:
         result = await self.session.execute(
             update(Notification)
             .where(Notification.id == notification_id, Notification.user_id == user_id)
-            .values(is_read=True, read_at=datetime.now(timezone.utc))
+            .values(is_read=True, read_at=datetime.now(UTC))
         )
         return result.rowcount > 0
 
@@ -66,7 +66,7 @@ class NotificationRepository:
                 Notification.user_id == user_id,
                 Notification.is_read == False,  # noqa: E712
             )
-            .values(is_read=True, read_at=datetime.now(timezone.utc))
+            .values(is_read=True, read_at=datetime.now(UTC))
         )
         return result.rowcount
 

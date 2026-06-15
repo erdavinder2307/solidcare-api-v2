@@ -1,7 +1,12 @@
 import uuid
 
 from app.core.exceptions.errors import NotFoundError
-from app.modules.notifications.models import Notification, NotificationChannel, NotificationStatus, NotificationType
+from app.modules.notifications.models import (
+    Notification,
+    NotificationChannel,
+    NotificationStatus,
+    NotificationType,
+)
 from app.modules.notifications.repository import NotificationRepository
 from app.shared.schemas.pagination import PaginatedResponse, PaginationParams
 

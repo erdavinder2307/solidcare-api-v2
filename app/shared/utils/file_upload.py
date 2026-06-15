@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from azure.storage.blob import BlobSasPermissions, BlobServiceClient, generate_blob_sas
@@ -44,6 +44,6 @@ def generate_sas_url(blob_path: str, expiry_hours: int | None = None) -> str:
         blob_name=blob_path,
         account_key=account_key,
         permission=BlobSasPermissions(read=True),
-        expiry=datetime.now(timezone.utc) + timedelta(hours=expiry_hours),
+        expiry=datetime.now(UTC) + timedelta(hours=expiry_hours),
     )
     return f"https://{account_name}.blob.core.windows.net/{settings.AZURE_STORAGE_CONTAINER_NAME}/{blob_path}?{sas_token}"
