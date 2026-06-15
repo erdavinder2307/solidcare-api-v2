@@ -26,72 +26,80 @@ DOCTOR_ID = uuid.UUID("00000000-0000-0000-0000-000000000020")
 
 
 async def seed_flow_data(session: AsyncSession) -> None:
-    session.add(
-        Organization(
-            id=ORG_ID,
-            name="Test Org",
-            slug="test-org",
-            schema_name="test_org",
-            subscription_plan=SubscriptionPlan.FREE,
-            status=OrganizationStatus.ACTIVE,
-        )
-    )
-    session.add(
-        Clinic(
-            id=CLINIC_ID,
-            organization_id=ORG_ID,
-            name="Test Clinic",
-            code="T001",
-            clinic_type=ClinicType.GENERAL,
-            is_active=True,
-        )
-    )
-    session.add(
-        Role(
-            id=ROLE_ID,
-            organization_id=ORG_ID,
-            name="Super Admin",
-            slug="superadmin",
-            is_system_role=True,
-        )
-    )
-    session.add(
-        Role(
-            id=DOCTOR_ROLE_ID,
-            organization_id=ORG_ID,
-            name="Doctor",
-            slug="doctor",
-            is_system_role=True,
-        )
-    )
-    session.add(
-        User(
-            id=USER_ID,
-            organization_id=ORG_ID,
-            email="admin@solidcare.health",
-            first_name="Admin",
-            last_name="User",
-            hashed_password=hash_password("Admin@1234"),
-            status=UserStatus.ACTIVE,
-            is_superadmin=True,
-            email_verified=True,
-            phone_verified=False,
-            mfa_enabled=False,
-        )
-    )
-    session.add(UserRole(user_id=USER_ID, role_id=ROLE_ID))
+    from sqlalchemy import select
 
     from app.modules.doctors.models import Doctor, DoctorStatus
 
-    session.add(
-        Doctor(
-            id=DOCTOR_ID,
-            organization_id=ORG_ID,
-            user_id=USER_ID,
-            registration_number="REG-001",
-            status=DoctorStatus.ACTIVE,
+    if await session.get(Organization, ORG_ID) is None:
+        session.add(
+            Organization(
+                id=ORG_ID,
+                name="Test Org",
+                slug="test-org",
+                schema_name="test_org",
+                subscription_plan=SubscriptionPlan.FREE,
+                status=OrganizationStatus.ACTIVE,
+            )
         )
-    )
+        session.add(
+            Clinic(
+                id=CLINIC_ID,
+                organization_id=ORG_ID,
+                name="Test Clinic",
+                code="T001",
+                clinic_type=ClinicType.GENERAL,
+                is_active=True,
+            )
+        )
+        session.add(
+            Role(
+                id=ROLE_ID,
+                organization_id=ORG_ID,
+                name="Super Admin",
+                slug="superadmin",
+                is_system_role=True,
+            )
+        )
+        session.add(
+            Role(
+                id=DOCTOR_ROLE_ID,
+                organization_id=ORG_ID,
+                name="Doctor",
+                slug="doctor",
+                is_system_role=True,
+            )
+        )
+
+    admin = await session.scalar(select(User).where(User.email == "admin@solidcare.health"))
+    if admin is None:
+        session.add(
+            User(
+                id=USER_ID,
+                organization_id=ORG_ID,
+                email="admin@solidcare.health",
+                first_name="Admin",
+                last_name="User",
+                hashed_password=hash_password("Admin@1234"),
+                status=UserStatus.ACTIVE,
+                is_superadmin=True,
+                email_verified=True,
+                phone_verified=False,
+                mfa_enabled=False,
+            )
+        )
+        session.add(UserRole(user_id=USER_ID, role_id=ROLE_ID))
+
+    if await session.get(Doctor, DOCTOR_ID) is None:
+        session.add(
+            Doctor(
+                id=DOCTOR_ID,
+                organization_id=ORG_ID,
+                user_id=USER_ID,
+                registration_number="REG-001",
+                status=DoctorStatus.ACTIVE,
+            )
+        )
+
     await session.commit()
 
 
