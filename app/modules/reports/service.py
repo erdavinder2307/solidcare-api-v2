@@ -210,9 +210,11 @@ class ReportsService:
         week_start = today - timedelta(days=today.weekday())
         start = week_start - timedelta(weeks=weeks - 1)
 
+        week_bucket = func.date_trunc("week", Payment.paid_at)
+
         q = (
             select(
-                func.date_trunc("week", Payment.paid_at).label("week_start"),
+                week_bucket.label("week_start"),
                 func.coalesce(func.sum(Payment.amount), 0.0).label("revenue"),
             )
             .where(
@@ -221,14 +223,17 @@ class ReportsService:
                 Payment.paid_at >= datetime.combine(start, time.min, tzinfo=UTC),
                 Payment.deleted_at.is_(None),
             )
-            .group_by(func.date_trunc("week", Payment.paid_at))
-            .order_by(func.date_trunc("week", Payment.paid_at))
+            .group_by(week_bucket)
+            .order_by(week_bucket)
         )
         if clinic_id:
             q = q.where(Payment.clinic_id == clinic_id)
 
         rows = (await self.session.execute(q)).all()
-        row_map = {r.week_start.date(): float(r.revenue) for r in rows}
+        row_map = {}
+        for r in rows:
+            ws = r.week_start.date() if hasattr(r.week_start, "date") else r.week_start
+            row_map[ws] = float(r.revenue)
 
         result = []
         for i in range(weeks):
