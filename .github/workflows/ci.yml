@@ -113,7 +113,10 @@ jobs:
         run: bash scripts/azure/build-deploy-package.sh "$RUNNER_TEMP/api-package"
 
       - name: Create zip
-        run: cd "$RUNNER_TEMP/api-package" && zip -r "$RUNNER_TEMP/solidcare-api.zip" .
+        run: |
+          cd "$RUNNER_TEMP/api-package"
+          zip -r -q "$RUNNER_TEMP/solidcare-api.zip" . -x "**/__pycache__/*" "**/*.pyc"
+          ls -lh "$RUNNER_TEMP/solidcare-api.zip"
 
       - name: Upload deployment artifact
         uses: actions/upload-artifact@v4
@@ -128,6 +131,9 @@ jobs:
     needs: build-package
     if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
     environment: development
+    env:
+      AZURE_RESOURCE_GROUP: solidev
+      AZURE_WEBAPP_NAME: solidcare-api-dev
     permissions:
       id-token: write
       contents: read
@@ -144,21 +150,45 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Configure App Service for offline zip deploy
+        run: |
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+              ENABLE_ORYX_BUILD=false \
+              WEBSITES_CONTAINER_START_TIME_LIMIT=1800 \
+              PYTHONPATH="/home/site/wwwroot:/home/site/wwwroot/.python_packages/lib/site-packages"
+
+          az webapp config set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --startup-file "startup.sh"
+
       - name: Deploy zip to App Service
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: solidcare-api-dev
-          package: artifact/solidcare-api.zip
+        run: |
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_WEBAPP_NAME" \
+            --src-path artifact/solidcare-api.zip \
+            --type zip \
+            --async false \
+            --timeout 1800000 \
+            --track-status true \
+            --clean true
 
       - name: Health check
         run: |
-          for i in $(seq 1 24); do
-            if curl -sf --max-time 30 "https://solidcare-api-dev.azurewebsites.net/health" | grep -q healthy; then
+          for i in $(seq 1 30); do
+            body=$(curl -sf --max-time 30 "https://${AZURE_WEBAPP_NAME}.azurewebsites.net/health" || true)
+            echo "Attempt $i: $body"
+            if echo "$body" | grep -q '"status".*"healthy"'; then
               echo "API healthy"
               exit 0
             fi
-            echo "Waiting for API warm-up ($i/24)..."
-            sleep 15
+            echo "Waiting for API warm-up ($i/30)..."
+            sleep 20
           done
           echo "Health check timed out"
           exit 1
