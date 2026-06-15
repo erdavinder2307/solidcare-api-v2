@@ -12,6 +12,11 @@ from app.modules.clinical.encounters.models import Encounter, EncounterStatus
 from app.modules.patients.models import Patient
 
 
+def _short_date_label(d: date) -> str:
+    """Portable day + month label (strftime %-d is unsupported on Linux)."""
+    return f"{d.day} {d.strftime('%b')}"
+
+
 class ReportsService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -186,7 +191,7 @@ class ReportsService:
             key = str(d)
             result.append({
                 "date": key,
-                "label": d.strftime("%-d %b"),
+                "label": _short_date_label(d),
                 "total": row_map.get(key, {}).get("total", 0),
                 "completed": row_map.get(key, {}).get("completed", 0),
             })
@@ -230,7 +235,7 @@ class ReportsService:
             ws = start + timedelta(weeks=i)
             result.append({
                 "week": str(ws),
-                "label": ws.strftime("%-d %b"),
+                "label": _short_date_label(ws),
                 "revenue": row_map.get(ws, 0.0),
             })
         return result
@@ -339,7 +344,7 @@ class ReportsService:
             key = str(d)
             result.append({
                 "date": key,
-                "label": d.strftime("%-d %b"),
+                "label": _short_date_label(d),
                 "total": row_map.get(key, {}).get("total", 0),
                 "completed": row_map.get(key, {}).get("completed", 0),
             })
