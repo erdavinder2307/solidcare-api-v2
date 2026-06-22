@@ -121,8 +121,8 @@ class EncounterResponse(BaseModel):
     referral_to: str | None
     summary_pdf_path: str | None
     completed_at: datetime | None
-    attested_by_id: uuid.UUID | None
-    attested_at: datetime | None
+    attested_by_id: uuid.UUID | None = None
+    attested_at: datetime | None = None
     created_at: datetime
     vitals: list[VitalResponse] = []
     diagnoses: list[DiagnosisResponse] = []
@@ -151,6 +151,8 @@ class EncounterResponse(BaseModel):
             referral_to=encounter.referral_to,
             summary_pdf_path=encounter.summary_pdf_path,
             completed_at=encounter.completed_at,
+            attested_by_id=encounter.attested_by_id,
+            attested_at=encounter.attested_at,
             created_at=encounter.created_at,
             vitals=[VitalResponse.model_validate(v) for v in (encounter.vitals or [])],
             diagnoses=[DiagnosisResponse.model_validate(d) for d in (encounter.diagnoses or [])],
