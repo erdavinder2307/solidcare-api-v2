@@ -1,7 +1,11 @@
 """
 Audit log middleware — records PHI access events to the audit_logs table.
+
+The audit write is dispatched as a fire-and-forget background task so that it
+never delays delivery of the HTTP response to the client.
 """
 
+import asyncio
 import logging
 import time
 
@@ -20,6 +24,14 @@ PHI_PREFIXES = (
 )
 
 
+async def _fire_audit(request: Request, status_code: int, elapsed_ms: float) -> None:
+    """Background coroutine — errors are logged and swallowed so they never surface to callers."""
+    try:
+        await persist_request_audit(request, status_code=status_code, elapsed_ms=elapsed_ms)
+    except Exception as exc:
+        logger.error("audit background write failed: %s", exc)
+
+
 class AuditMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start = time.perf_counter()
@@ -34,8 +46,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 response.status_code,
                 elapsed_ms,
             )
-            await persist_request_audit(
-                request, status_code=response.status_code, elapsed_ms=elapsed_ms
+            # Schedule the DB write as a non-blocking background task so it does
+            # not hold the HTTP response hostage while waiting for a DB connection.
+            asyncio.create_task(
+                _fire_audit(request, response.status_code, elapsed_ms),
+                name="audit_write",
             )
 
         return response

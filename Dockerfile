@@ -14,15 +14,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 FROM base AS builder
 COPY requirements.txt .
-RUN pip install --user -r requirements.txt
+RUN pip install -r requirements.txt
 
 FROM base AS runtime
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+COPY --from=builder /usr/local /usr/local
 
 COPY . .
 
-RUN addgroup --system solidcare && adduser --system --group solidcare
+RUN addgroup --system solidcare && adduser --system --group solidcare \
+    && chown -R solidcare:solidcare /app
 USER solidcare
 
 EXPOSE 8000

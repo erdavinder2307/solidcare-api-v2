@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from app.config import settings
@@ -20,6 +21,11 @@ from app.modules.auth.repository import AuthRepository
 from app.modules.auth.schemas import MfaSetupResponse, TokenResponse
 from app.modules.users.models import User, UserStatus
 
+logger = logging.getLogger(__name__)
+
+# Redis commands must complete within this many seconds or they are skipped.
+_REDIS_OP_TIMEOUT = 2.0
+
 MAX_FAILED_ATTEMPTS = 5
 
 
@@ -30,7 +36,12 @@ class AuthService:
         if settings.REDIS_ENABLED:
             import redis.asyncio as aioredis
 
-            self._redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            self._redis = aioredis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_connect_timeout=_REDIS_OP_TIMEOUT,
+                socket_timeout=_REDIS_OP_TIMEOUT,
+            )
 
     async def login(self, email: str, password: str, org_id: uuid.UUID) -> TokenResponse:
         user = await self.repo.get_user_by_email(email.lower(), org_id)
@@ -88,10 +99,16 @@ class AuthService:
             raise UnauthorizedError("Invalid refresh token")
 
         jti = payload.get("jti")
-        if self._redis:
-            is_revoked = await self._redis.get(f"revoked:refresh:{jti}")
-            if is_revoked:
-                raise UnauthorizedError("Token has been revoked")
+        if self._redis and jti:
+            try:
+                is_revoked = await self._redis.get(f"revoked:refresh:{jti}")
+                if is_revoked:
+                    raise UnauthorizedError("Token has been revoked")
+            except UnauthorizedError:
+                raise
+            except Exception as exc:
+                # Redis unavailable — allow the refresh to proceed rather than blocking users.
+                logger.warning("AuthService: Redis unavailable during revocation check, skipping. error=%s", exc)
 
         user_id = uuid.UUID(payload["sub"])
         user = await self.repo.get_user_by_id(user_id)

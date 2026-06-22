@@ -7,6 +7,10 @@ import uuid
 from dataclasses import dataclass
 
 from app.core.events.bus import DomainEvent, event_bus
+from app.core.background.tasks.notification_tasks import (
+    send_email_notification,
+    send_sms_notification,
+)
 from app.core.notifications.writer import create_in_app_notification
 from app.modules.notifications.models import NotificationType
 
@@ -73,6 +77,19 @@ async def on_appointment_booked(event: AppointmentBooked) -> None:
         f"Appointment on {event.appointment_date} at {event.appointment_time}",
         event.patient_id,
     )
+
+    sms_context = {
+        "message": f"Appointment confirmed for {event.appointment_date} at {event.appointment_time}. - Solidcare"
+    }
+    email_context = {
+        "subject": "Appointment confirmed",
+        "body": f"Your appointment is booked for {event.appointment_date} at {event.appointment_time}.",
+    }
+
+    if event.patient_phone:
+        send_sms_notification.delay(event.patient_phone, "appointment_booked", sms_context)
+    if event.patient_email:
+        send_email_notification.delay(event.patient_email, "appointment_booked", email_context)
 
 
 @event_bus.subscribe(AppointmentCancelled)

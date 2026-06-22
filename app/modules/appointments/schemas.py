@@ -20,6 +20,7 @@ class AppointmentCreate(BaseModel):
 class AppointmentUpdate(BaseModel):
     appointment_date: date | None = None
     start_time: str | None = Field(default=None, pattern=r"^\d{2}:\d{2}$")
+    appointment_type: AppointmentType | None = None
     chief_complaint: str | None = None
     notes: str | None = None
 
