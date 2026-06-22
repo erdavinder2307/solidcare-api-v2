@@ -6,11 +6,11 @@ import logging
 import uuid
 from dataclasses import dataclass
 
-from app.core.events.bus import DomainEvent, event_bus
 from app.core.background.tasks.notification_tasks import (
     send_email_notification,
     send_sms_notification,
 )
+from app.core.events.bus import DomainEvent, event_bus
 from app.core.notifications.writer import create_in_app_notification
 from app.modules.notifications.models import NotificationType
 

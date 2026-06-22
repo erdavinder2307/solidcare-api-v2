@@ -13,8 +13,7 @@ import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
+import pytest  # noqa: F401 — collected by pytest runner
 
 # ---------------------------------------------------------------------------
 # RateLimitMiddleware — graceful degradation on Redis failure
@@ -363,7 +362,6 @@ class TestAuthServiceRedisResilience:
     @pytest.mark.asyncio
     async def test_refresh_proceeds_when_redis_down(self):
         """refresh_token must succeed even when Redis raises ConnectionRefusedError."""
-        from app.core.exceptions.errors import UnauthorizedError
         from app.core.security.jwt import create_refresh_token
 
         svc, repo = self._make_service()
@@ -400,9 +398,8 @@ class TestAuthServiceRedisResilience:
             mock_at.return_value = "new-access-token"
             mock_rt.return_value = ("new-refresh-token", str(uuid.uuid4()))
 
-            from app.modules.auth.schemas import TokenResponse
-            from unittest.mock import patch as patch2
-            with patch2.object(svc, "_issue_tokens", new_callable=AsyncMock) as mock_issue:
+            from app.modules.auth.schemas import TokenResponse  # noqa: PLC0415
+            with patch.object(svc, "_issue_tokens", new_callable=AsyncMock) as mock_issue:
                 mock_issue.return_value = TokenResponse(
                     access_token="new-access",
                     refresh_token="new-refresh",

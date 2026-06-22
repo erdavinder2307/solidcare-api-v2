@@ -2,8 +2,6 @@
 
 import uuid
 
-import pytest
-
 from app.shared.utils.file_upload import (
     ALLOWED_EXTENSIONS,
     MAX_FILE_SIZE_MB,

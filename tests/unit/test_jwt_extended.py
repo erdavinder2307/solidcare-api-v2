@@ -3,7 +3,6 @@
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
 
 import pytest
 
@@ -11,13 +10,12 @@ pytest.importorskip("jose")
 
 from jose import jwt
 
+from app.core.exceptions.errors import UnauthorizedError
 from app.core.security.jwt import (
     create_access_token,
     create_refresh_token,
     decode_token,
 )
-from app.core.exceptions.errors import UnauthorizedError
-
 
 # ---------------------------------------------------------------------------
 # Helpers
