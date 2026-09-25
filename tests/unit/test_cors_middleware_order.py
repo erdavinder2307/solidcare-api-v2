@@ -58,3 +58,37 @@ async def test_rate_limit_response_carries_cors_header():
 
     assert resp.status_code == 429
     assert resp.headers.get("access-control-allow-origin") == ORIGIN
+
+
+def _make_app_with_failing_route():
+    app = _make_app()
+
+    @app.get("/boom")
+    async def boom():
+        raise RuntimeError("simulated database outage")
+
+    return app
+
+
+@pytest.mark.asyncio
+async def test_unhandled_exception_500_carries_cors_header():
+    # The Exception handler runs in ServerErrorMiddleware, outside all add_middleware() entries.
+    app = _make_app_with_failing_route()
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get("/boom", headers={"Origin": ORIGIN})
+
+    assert resp.status_code == 500
+    assert resp.json()["error_code"] == "INTERNAL_ERROR"
+    assert resp.headers.get("access-control-allow-origin") == ORIGIN
+
+
+@pytest.mark.asyncio
+async def test_unhandled_exception_500_has_no_cors_header_for_other_origin():
+    app = _make_app_with_failing_route()
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get("/boom", headers={"Origin": "https://evil.example"})
+
+    assert resp.status_code == 500
+    assert "access-control-allow-origin" not in resp.headers

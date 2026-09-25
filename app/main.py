@@ -41,8 +41,31 @@ async def lifespan(app: FastAPI):
     logger.info("Solidcare API shutting down")
 
 
+class _CORSWrappedFastAPI(FastAPI):
+    """FastAPI app whose CORS layer wraps the whole middleware stack.
+
+    Starlette runs the `Exception` handler inside ServerErrorMiddleware, which always sits
+    outside every add_middleware() entry. CORS added via add_middleware() therefore never
+    sees unhandled 500s, and the browser reports them as CORS failures.
+    """
+
+    def __init__(self, *, cors_origins: list[str], **kwargs) -> None:
+        self._cors_origins = cors_origins
+        super().__init__(**kwargs)
+
+    def build_middleware_stack(self):
+        return CORSMiddleware(
+            super().build_middleware_stack(),
+            allow_origins=self._cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(
+    app = _CORSWrappedFastAPI(
+        cors_origins=settings.CORS_ORIGINS,
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description="Solidcare V2 — Enterprise Healthcare Platform API",
@@ -53,18 +76,10 @@ def create_app() -> FastAPI:
     )
 
     # ── Middleware (order matters: the LAST added is the outermost) ───────────
-    # CORS is added last so that responses produced by the other middlewares
-    # (e.g. a 429 from RateLimitMiddleware) still carry CORS headers.
+    # CORS is not added here: _CORSWrappedFastAPI wraps it around the whole stack.
     app.add_middleware(AuditMiddleware)
     app.add_middleware(TenantContextMiddleware)
     app.add_middleware(RateLimitMiddleware)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
 
     # ── Exception handlers ────────────────────────────────────────────────────
     app.add_exception_handler(SolidcareException, solidcare_exception_handler)
