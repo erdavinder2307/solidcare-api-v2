@@ -52,7 +52,12 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ── Middleware (order matters: outermost executes first) ──────────────────
+    # ── Middleware (order matters: the LAST added is the outermost) ───────────
+    # CORS is added last so that responses produced by the other middlewares
+    # (e.g. a 429 from RateLimitMiddleware) still carry CORS headers.
+    app.add_middleware(AuditMiddleware)
+    app.add_middleware(TenantContextMiddleware)
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
@@ -60,9 +65,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.add_middleware(AuditMiddleware)
-    app.add_middleware(TenantContextMiddleware)
-    app.add_middleware(RateLimitMiddleware)
 
     # ── Exception handlers ────────────────────────────────────────────────────
     app.add_exception_handler(SolidcareException, solidcare_exception_handler)
