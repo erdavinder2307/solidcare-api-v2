@@ -131,5 +131,5 @@ async def test_handler_returns_friendly_503_with_retry_after():
     assert response.status_code == 503
     assert response.headers["Retry-After"] == "30"
     body = response.json()
-    assert body["error_code"] == "DATABASE_STARTING"
-    assert "try again" in body["detail"]
+    assert body["error_code"] == "DB_STARTING"
+    assert "Retry shortly" in body["detail"]

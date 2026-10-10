@@ -98,3 +98,25 @@ async def ensure_database_awake(session: AsyncSession) -> None:
         await request_wake()
         raise DatabaseStartingError() from exc
     _backoff.reset()
+
+
+async def database_status() -> str:
+    """'ready', 'starting' (unreachable, wake requested) or 'unavailable' (no wake configured).
+
+    Backs GET/POST /health/db: login screens call it once to wake the database early, then poll it
+    while they show the waiting state.
+    """
+    from app.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.connection()
+    except Exception as exc:
+        if not is_database_unreachable(exc):
+            raise
+        if not settings.DB_WAKE_URL:
+            return "unavailable"
+        await request_wake()
+        return "starting"
+    _backoff.reset()
+    return "ready"
