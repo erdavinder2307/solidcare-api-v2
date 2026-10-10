@@ -56,3 +56,14 @@ class BusinessRuleError(SolidcareException):
 class TenantError(SolidcareException):
     status_code = 403
     error_code = "TENANT_ERROR"
+
+
+class DatabaseStartingError(SolidcareException):
+    status_code = 503
+    error_code = "DATABASE_STARTING"
+
+    def __init__(
+        self,
+        detail: str = "Starting the test database, about 2–5 minutes. Please try again shortly.",
+    ) -> None:
+        super().__init__(detail)

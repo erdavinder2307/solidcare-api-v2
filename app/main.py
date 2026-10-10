@@ -10,8 +10,9 @@ from starlette.exceptions import HTTPException
 import app.core.events.handlers.notification_handler  # noqa: F401
 import app.register_models  # noqa: F401 — register all SQLAlchemy mappers
 from app.config import settings
-from app.core.exceptions.errors import SolidcareException
+from app.core.exceptions.errors import DatabaseStartingError, SolidcareException
 from app.core.exceptions.handlers import (
+    database_starting_handler,
     http_exception_handler,
     solidcare_exception_handler,
     unhandled_exception_handler,
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
 
     # ── Exception handlers ────────────────────────────────────────────────────
     app.add_exception_handler(SolidcareException, solidcare_exception_handler)
+    app.add_exception_handler(DatabaseStartingError, database_starting_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)

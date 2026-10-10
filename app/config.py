@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://solidcare:solidcare@localhost:5432/solidcare_dev"
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
+    # Dev only: wake endpoint of the database auto-stop function (infra/db-autostop).
+    # Empty = off; database errors then surface exactly as before.
+    DB_WAKE_URL: str = ""
+    DB_WAKE_KEY: str = ""
 
     # Redis (optional — disable for minimum-cost Azure demo deployments)
     REDIS_ENABLED: bool = True

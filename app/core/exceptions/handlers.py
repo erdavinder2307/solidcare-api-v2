@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
-from app.core.exceptions.errors import SolidcareException
+from app.core.exceptions.errors import DatabaseStartingError, SolidcareException
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,18 @@ async def solidcare_exception_handler(
     return JSONResponse(
         status_code=exc.status_code,
         content=_problem_detail(exc.status_code, exc.error_code, exc.detail, request),
+    )
+
+
+async def database_starting_handler(
+    request: Request, exc: DatabaseStartingError
+) -> JSONResponse:
+    from app.core.db_wake import RETRY_AFTER_SECONDS
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_problem_detail(exc.status_code, exc.error_code, exc.detail, request),
+        headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
     )
 
 
