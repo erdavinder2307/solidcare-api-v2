@@ -25,3 +25,6 @@ htmlcov/
 # Logs
 *.log
 logs/
+
+# Azure Functions local settings (infra/db-autostop)
+local.settings.json
