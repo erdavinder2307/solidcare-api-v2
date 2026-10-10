@@ -62,7 +62,7 @@ async def test_wake_backs_off_while_database_stays_down(wake_client):
 async def test_wake_again_after_backoff_step(wake_client):
     with pytest.raises(DatabaseStartingError):
         await db_wake.ensure_database_awake(_session(TimeoutError()))
-    db_wake._backoff.next_at = 0.0  # the 60 s step has passed
+    db_wake._backoff.next_at = 0.0  # the 45 s step has passed
 
     with pytest.raises(DatabaseStartingError):
         await db_wake.ensure_database_awake(_session(TimeoutError()))

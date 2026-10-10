@@ -13,7 +13,7 @@ compute is billed only while someone is working. Storage is still billed while i
 - **Wake (`POST /api/wake`, function key).** Starts the server if it is stopped and returns
   `{"state": ...}`: 200 when ready, 202 while starting or stopping. Calling it again is safe.
 - **The API.** When `DB_WAKE_URL` and `DB_WAKE_KEY` are set and the database cannot be reached, a
-  request calls wake (at most once per backoff step: now, then 1, 2, 4, 5 minutes) and gets a 503 with
+  request calls wake (at most once every 45 seconds) and gets a 503 with
   `error_code: DB_STARTING` and `Retry-After: 30` instead of a 500.
   `GET`/`POST /health/db` answers `{"database": "ready"}` or a 503 `{"database": "starting"}` and wakes
   the server. Login screens call it once when they open and poll it while they show the waiting state.
@@ -31,6 +31,10 @@ and a start only from Stopped
 `metrics.collector_database_activity=on` (dynamic, no restart;
 [monitoring](https://learn.microsoft.com/en-us/azure/postgresql/monitor/concepts-monitoring)).
 A start usually takes 2–5 minutes.
+
+**Other databases on the server.** The server stops when the databases in `DATABASE_NAMES` are idle.
+A database on the same server that is not in the list stops working while the server is stopped, and
+an app using it has no wake path. `plan` lists every database on the server next to `DATABASE_NAMES`.
 
 ## Permissions
 
@@ -54,6 +58,8 @@ infra/db-autostop/deploy.sh stop     # stop it now
 
 `infra/db-autostop/deploy.sh off` stops the function app (kept, not deleted), removes `DB_WAKE_URL` and
 `DB_WAKE_KEY` from the API (the API then behaves exactly as before) and starts the server, so it stays on.
+If the server is still stopping or starting, `off` waits (up to 10 minutes) until it settles, then
+starts it. Like the other commands it needs the seven names set and `az login`.
 Run `deploy` again to turn auto-stop back on.
 
 ## Tests

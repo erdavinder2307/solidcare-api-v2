@@ -74,6 +74,7 @@ plan() {
   [ "$(metric_param)" = "on" ] && say "$METRIC_PARAM: on" \
     || say "$METRIC_PARAM: WOULD SET on (dynamic, no restart; needed for the xact_total metric)"
   say "function settings: WOULD SET SUBSCRIPTION_ID, RESOURCE_GROUP, SERVER_NAME, DATABASE_NAMES=$DATABASE_NAMES"
+  say "databases on the server: $(az postgres flexible-server db list -g "$RG" -s "$SERVER_NAME" --query "[].name" -o tsv | grep -vxE 'azure_maintenance|azure_sys|postgres' | tr '\n' ' ')(watched: $DATABASE_NAMES; any other one stops working while the server is stopped)"
   api_has_wake && say "API $API_APP: DB_WAKE_URL/DB_WAKE_KEY already set (WOULD REFRESH)" \
     || say "API $API_APP: WOULD SET DB_WAKE_URL and DB_WAKE_KEY (the key goes from Azure into the setting, never shown)"
   say "server $SERVER_NAME is $(server_state); deploy does not stop or start it"
@@ -140,7 +141,18 @@ off() {
   func_exists && az functionapp stop -g "$RG" -n "$FUNC_APP" -o none && say "function app stopped (kept, not deleted)"
   az webapp config appsettings delete -g "$RG" -n "$API_APP" --setting-names DB_WAKE_URL DB_WAKE_KEY -o none
   say "API wake settings removed (restarts the API)"
-  [ "$(server_state)" = "Stopped" ] && az postgres flexible-server start -g "$RG" -n "$SERVER_NAME" --no-wait -o none
+  local state tries=0
+  state=$(server_state)
+  while [ "$state" = "Stopping" ] || [ "$state" = "Starting" ] || [ "$state" = "Updating" ]; do
+    [ "$tries" -ge 20 ] && break
+    say "server is $state; waiting 30 s for it to settle"
+    sleep 30; tries=$((tries + 1)); state=$(server_state)
+  done
+  if [ "$state" = "Stopped" ]; then
+    az postgres flexible-server start -g "$RG" -n "$SERVER_NAME" --no-wait -o none
+  elif [ "$state" != "Ready" ]; then
+    say "WARNING: server is still $state after 10 minutes, so it was not started. Run 'off' again shortly."
+  fi
   say "server: $(server_state). Auto-stop is off; run deploy again to turn it back on."
 }
 

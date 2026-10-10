@@ -2,8 +2,9 @@
 
 Only active when DB_WAKE_URL is set. A request that cannot reach the database then asks
 the wake function to start the server and gets a 503 with Retry-After instead of a 500.
-Wake calls back off (immediately, then 1, 2, 4, 5 min) while the database stays down, and
-the backoff resets on the first successful connection.
+Wake calls are spaced 45 s apart while the database stays down (a wake during an idle stop only
+answers "stopping", so the next one must come soon), and the spacing resets on the first
+successful connection.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from app.core.exceptions.errors import DatabaseStartingError
 logger = logging.getLogger(__name__)
 
 RETRY_AFTER_SECONDS = 30
-_BACKOFF_SECONDS = (60, 120, 240, 300)
+_BACKOFF_SECONDS = (45,)
 _WAKE_TIMEOUT_SECONDS = 5.0
 
 # asyncpg errors that mean "not up yet" rather than a bad query or bad credentials.
