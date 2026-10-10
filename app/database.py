@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
+from app.core.db_wake import ensure_database_awake
 
 engine = create_async_engine(
     settings.DATABASE_URL,
@@ -29,6 +30,7 @@ class Base(DeclarativeBase):
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
+        await ensure_database_awake(session)
         try:
             yield session
             await session.commit()
@@ -42,6 +44,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 @asynccontextmanager
 async def get_db_context() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
+        await ensure_database_awake(session)
         try:
             yield session
             await session.commit()

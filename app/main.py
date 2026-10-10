@@ -4,14 +4,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 # Import event handlers to register them on startup
 import app.core.events.handlers.notification_handler  # noqa: F401
 import app.register_models  # noqa: F401 — register all SQLAlchemy mappers
 from app.config import settings
-from app.core.exceptions.errors import SolidcareException
+from app.core.exceptions.errors import DatabaseStartingError, SolidcareException
 from app.core.exceptions.handlers import (
+    database_starting_handler,
     http_exception_handler,
     solidcare_exception_handler,
     unhandled_exception_handler,
@@ -83,6 +85,7 @@ def create_app() -> FastAPI:
 
     # ── Exception handlers ────────────────────────────────────────────────────
     app.add_exception_handler(SolidcareException, solidcare_exception_handler)
+    app.add_exception_handler(DatabaseStartingError, database_starting_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
@@ -137,14 +140,20 @@ def create_app() -> FastAPI:
         db_status = "unconfigured"
         storage_status = "unconfigured"
 
-        # 1. Check Database Connectivity
-        try:
-            async with AsyncSessionLocal() as session:
-                await session.execute(text("SELECT 1"))
-                db_status = "connected"
-        except Exception as e:
-            db_status = f"error: {str(e)}"
-            logger.error("Health check database connection failed: %s", str(e))
+        # 1. Check Database Connectivity. With auto-stop on (DB_WAKE_URL) the App Service health
+        # check pings this route every minute, so it must not open a connection or the database
+        # never counts as idle; /health/db does the real check.
+        if settings.DB_WAKE_URL:
+            db_status = "not checked (auto-stop on, see /health/db)"
+        else:
+            try:
+                async with AsyncSessionLocal() as session:
+                    await session.execute(text("SELECT 1"))
+                    db_status = "connected"
+            except Exception as e:
+                db_status = f"error: {str(e)}"
+                logger.error("Health check database connection failed: %s", str(e))
+        db_ok = db_status == "connected" or bool(settings.DB_WAKE_URL)
 
         # 2. Check Blob Storage Connectivity (optional; skipped in test)
         if settings.ENV == "test":
@@ -164,9 +173,9 @@ def create_app() -> FastAPI:
         else:
             storage_status = "disabled"
 
-        overall_status = "healthy" if db_status == "connected" and (
+        overall_status = "healthy" if db_ok and (
             storage_status in ("connected", "disabled", "skipped")
-        ) else "degraded" if db_status == "connected" else "unhealthy"
+        ) else "degraded" if db_ok else "unhealthy"
 
         return {
             "status": overall_status,
@@ -177,6 +186,22 @@ def create_app() -> FastAPI:
                 "storage": storage_status,
             }
         }
+
+    @app.get("/health/db", tags=["Health"])
+    async def database_health() -> JSONResponse:
+        from app.core.db_wake import RETRY_AFTER_SECONDS, database_status
+
+        status = await database_status()
+        if status == "ready":
+            return JSONResponse({"database": "ready"})
+        return JSONResponse(
+            {"database": status, "error_code": "DB_STARTING" if status == "starting" else None},
+            status_code=503,
+            headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
+        )
+
+    # Login screens POST once when they open, to start a stopped database while the user types.
+    app.post("/health/db", tags=["Health"], operation_id="wake_database")(database_health)
 
     return app
 
