@@ -16,7 +16,7 @@ from app.modules.clinics.models import Clinic  # noqa: F401
 from app.modules.doctors.models import Doctor, DoctorClinicAssignment, DoctorSchedule  # noqa: F401
 from app.modules.medicines.models import Medicine  # noqa: F401
 from app.modules.notifications.models import Notification  # noqa: F401
-from app.modules.organizations.models import Organization  # noqa: F401
+from app.modules.organizations.models import Membership, Organization  # noqa: F401
 from app.modules.patients.models import Patient, PatientConsent, PatientDocument  # noqa: F401
 from app.modules.prescriptions.models import Prescription, PrescriptionItem  # noqa: F401
 from app.modules.users.models import Permission, Role, RolePermission, User, UserRole  # noqa: F401
