@@ -32,13 +32,16 @@ ORG_A = uuid.UUID("55555555-0000-0000-0000-00000000000a")
 ORG_B = uuid.UUID("55555555-0000-0000-0000-00000000000b")
 ORG_C = uuid.UUID("55555555-0000-0000-0000-00000000000c")  # user is NOT a member here
 USER_ID = uuid.UUID("55555555-0000-0000-0000-000000000001")
+# Unique per run: the RBAC seed migration already creates "patient:read" etc., and slugs are unique.
+PERM_A = f"patient:read-{uuid.uuid4().hex[:6]}"
+PERM_B = f"billing:read-{uuid.uuid4().hex[:6]}"
 
 
 async def _seed_two_org_user(session):
     """One user with ACTIVE memberships in Org A and Org B, distinct roles in each.
 
-    Org A → permission "patient:read"
-    Org B → permission "billing:read"
+    Org A → permission PERM_A ("patient:read-<suffix>")
+    Org B → permission PERM_B ("billing:read-<suffix>")
     A third org, Org C, exists but the user has no membership there.
     """
     for org_id, name in ((ORG_A, "Org A"), (ORG_B, "Org B"), (ORG_C, "Org C")):
@@ -69,8 +72,8 @@ async def _seed_two_org_user(session):
     session.add(Membership(user_id=USER_ID, organization_id=ORG_B, status=MembershipStatus.ACTIVE, is_default=False))
     await session.flush()
 
-    perm_a = Permission(id=uuid.uuid4(), name="Read Patient", slug="patient:read", resource="patient", action="read")
-    perm_b = Permission(id=uuid.uuid4(), name="Read Billing", slug="billing:read", resource="billing", action="read")
+    perm_a = Permission(id=uuid.uuid4(), name="Read Patient", slug=PERM_A, resource="patient", action="read")
+    perm_b = Permission(id=uuid.uuid4(), name="Read Billing", slug=PERM_B, resource="billing", action="read")
     session.add_all([perm_a, perm_b])
     await session.flush()
 
@@ -101,8 +104,8 @@ async def test_permissions_scoped_to_org_a_exclude_org_b(setup_database, db_sess
 
     perms = await repo.get_user_permissions(USER_ID, ORG_A)
 
-    assert "patient:read" in perms
-    assert "billing:read" not in perms, "Org B's permission leaked into an Org A-scoped query"
+    assert PERM_A in perms
+    assert PERM_B not in perms, "Org B's permission leaked into an Org A-scoped query"
 
 
 async def test_permissions_scoped_to_org_b_exclude_org_a(setup_database, db_session):
@@ -111,8 +114,8 @@ async def test_permissions_scoped_to_org_b_exclude_org_a(setup_database, db_sess
 
     perms = await repo.get_user_permissions(USER_ID, ORG_B)
 
-    assert "billing:read" in perms
-    assert "patient:read" not in perms, "Org A's permission leaked into an Org B-scoped query"
+    assert PERM_B in perms
+    assert PERM_A not in perms, "Org A's permission leaked into an Org B-scoped query"
 
 
 async def test_permissions_unscoped_call_returns_union(setup_database, db_session):
@@ -126,8 +129,8 @@ async def test_permissions_unscoped_call_returns_union(setup_database, db_sessio
 
     perms = await repo.get_user_permissions(USER_ID)  # no org_id
 
-    assert "patient:read" in perms
-    assert "billing:read" in perms
+    assert PERM_A in perms
+    assert PERM_B in perms
 
 
 async def test_roles_scoped_to_org_match_permissions_scoping(setup_database, db_session):
@@ -156,8 +159,8 @@ async def test_switch_org_to_active_membership_issues_scoped_token(setup_databas
     payload = pyjwt.decode(tokens.access_token, options={"verify_signature": False})
     assert payload["org_id"] == str(ORG_B)
     assert payload["active_org_id"] == str(ORG_B)
-    assert "billing:read" in payload["permissions"]
-    assert "patient:read" not in payload["permissions"]
+    assert PERM_B in payload["permissions"]
+    assert PERM_A not in payload["permissions"]
 
 
 async def test_switch_org_rejects_non_member_org(setup_database, db_session):

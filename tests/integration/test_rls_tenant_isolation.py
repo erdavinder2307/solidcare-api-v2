@@ -33,6 +33,9 @@ pytestmark = pytest.mark.asyncio
 RLS_TABLE = "patients"  # representative of the 5 tables the migration covers
 ORG_A = uuid.UUID("66666666-0000-0000-0000-00000000000a")
 ORG_B = uuid.UUID("66666666-0000-0000-0000-00000000000b")
+# Superusers and BYPASSRLS roles skip RLS even with FORCE (CI's postgres image makes the
+# test user a superuser), so the queries below run as this plain role in that case.
+PROBE_ROLE = "rls_probe"
 
 
 async def _apply_rls(session):
@@ -49,7 +52,34 @@ async def _apply_rls(session):
             """
         )
     )
+    if await _bypasses_rls(session):
+        await session.execute(
+            text(
+                f"""
+                DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{PROBE_ROLE}') THEN
+                        CREATE ROLE {PROBE_ROLE} NOLOGIN NOSUPERUSER NOBYPASSRLS;
+                    END IF;
+                END $$
+                """
+            )
+        )
+        await session.execute(text(f"GRANT SELECT, INSERT ON {RLS_TABLE} TO {PROBE_ROLE}"))
     await session.commit()
+
+
+async def _bypasses_rls(session) -> bool:
+    result = await session.execute(
+        text("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")
+    )
+    return result.scalar_one()
+
+
+async def _drop_rls_bypass(session) -> None:
+    """Runs the rest of the current transaction as a role RLS applies to, and proves it."""
+    if await _bypasses_rls(session):
+        await session.execute(text(f"SET LOCAL ROLE {PROBE_ROLE}"))
+    assert not await _bypasses_rls(session), "test role bypasses RLS; the checks below would prove nothing"
 
 
 async def _seed_two_orgs_one_patient_each(session):
@@ -98,6 +128,8 @@ async def test_no_org_context_denies_all_rows(setup_database, db_session):
     await _seed_two_orgs_one_patient_each(db_session)
     await _apply_rls(db_session)
 
+    await db_session.execute(text("BEGIN"))
+    await _drop_rls_bypass(db_session)
     count = await _count_patients(db_session)
 
     assert count == 0, "FORCE RLS did not block an unscoped session — it is not actually enforcing"
@@ -108,6 +140,7 @@ async def test_correct_org_context_sees_only_its_own_row(setup_database, db_sess
     await _apply_rls(db_session)
 
     await db_session.execute(text("BEGIN"))
+    await _drop_rls_bypass(db_session)
     await _set_org_context(db_session, ORG_A)
     result = await db_session.execute(text(f"SELECT first_name FROM {RLS_TABLE}"))
     names = [r[0] for r in result.all()]
@@ -123,6 +156,7 @@ async def test_wrong_org_context_sees_nothing_not_the_other_orgs_data(setup_data
     await _apply_rls(db_session)
 
     await db_session.execute(text("BEGIN"))
+    await _drop_rls_bypass(db_session)
     await _set_org_context(db_session, ORG_B)
     result = await db_session.execute(text(f"SELECT first_name FROM {RLS_TABLE}"))
     names = [r[0] for r in result.all()]
@@ -139,6 +173,7 @@ async def test_insert_rejected_when_organization_id_does_not_match_context(setup
     await _apply_rls(db_session)
 
     await db_session.execute(text("BEGIN"))
+    await _drop_rls_bypass(db_session)
     await _set_org_context(db_session, ORG_A)
 
     with pytest.raises(Exception) as exc_info:
