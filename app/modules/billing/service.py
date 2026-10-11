@@ -10,11 +10,12 @@ from app.modules.billing.invoices.models import (
     InvoiceStatus,
     ServiceChargeMaster,
 )
-from app.modules.billing.payments.models import Payment, PaymentStatus
+from app.modules.billing.payments.models import Payment, PaymentMethod, PaymentStatus
 from app.modules.billing.repository import InvoiceRepository, PaymentRepository
 from app.modules.billing.schemas import (
     InvoiceCreate,
     PaymentCreate,
+    RefundCreate,
     ServiceChargeMasterCreate,
     ServiceChargeMasterUpdate,
 )
@@ -249,6 +250,42 @@ class BillingService:
         invoice.cancelled_at = datetime.now(UTC)
         invoice.outstanding_amount = 0.0
         return invoice
+
+    async def refund_payment(
+        self, invoice_id: uuid.UUID, org_id: uuid.UUID, data: RefundCreate, created_by: uuid.UUID
+    ) -> Payment:
+        invoice = await self.get_invoice(invoice_id, org_id)
+        if invoice.status not in (InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID):
+            raise BusinessRuleError(f"Cannot refund an invoice with status {invoice.status.value}")
+        if invoice.paid_amount <= 0:
+            raise BusinessRuleError("There is no payment to refund on this invoice")
+        if data.amount > invoice.paid_amount + 0.01:
+            raise BusinessRuleError("Refund amount exceeds the amount paid")
+
+        receipt_number = await self.payment_repo.next_receipt_number(org_id)
+        refund = Payment(
+            organization_id=org_id,
+            clinic_id=invoice.clinic_id,
+            invoice_id=invoice.id,
+            patient_id=invoice.patient_id,
+            payment_method=data.payment_method or PaymentMethod.CASH,
+            status=PaymentStatus.REFUNDED,
+            amount=-round(data.amount, 2),
+            notes=data.reason,
+            receipt_number=receipt_number,
+            paid_at=datetime.now(UTC),
+            created_by_id=created_by,
+            updated_by_id=created_by,
+        )
+        refund = await self.payment_repo.create(refund)
+
+        # Reduce what the invoice records as paid; outstanding is not reopened.
+        invoice.paid_amount = round(invoice.paid_amount - data.amount, 2)
+        if invoice.paid_amount <= 0:
+            invoice.status = InvoiceStatus.REFUNDED
+        else:
+            invoice.status = InvoiceStatus.PARTIALLY_PAID
+        return refund
 
     # ---------- Service Charge Master ----------
 

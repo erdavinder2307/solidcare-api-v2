@@ -49,13 +49,14 @@ async def list_appointments(
     patient_id: uuid.UUID | None = None,
     appointment_date: date | None = None,
     status: AppointmentStatus | None = None,
+    search: str | None = Query(default=None),
 ) -> PaginatedResponse:
     current_user.require("appointment:read")
     params = PaginationParams(page=page, page_size=page_size)
     return await service.list(
         current_user.org_id, params,
         clinic_id=clinic_id, doctor_id=doctor_id, patient_id=patient_id,
-        appointment_date=appointment_date, status=status,
+        appointment_date=appointment_date, status=status, search=search,
     )
 
 

@@ -29,6 +29,16 @@ class PaymentStatus(str, Enum):
     PARTIALLY_REFUNDED = "partially_refunded"
 
 
+# Statuses that count toward collected revenue. Refunds are stored as separate
+# rows with a NEGATIVE amount, so summing these nets refunds out of revenue.
+# Always sum over this set — filtering on COMPLETED alone overstates revenue.
+REVENUE_STATUSES = (
+    PaymentStatus.COMPLETED,
+    PaymentStatus.REFUNDED,
+    PaymentStatus.PARTIALLY_REFUNDED,
+)
+
+
 class Payment(BaseModel):
     __tablename__ = "payments"
 
