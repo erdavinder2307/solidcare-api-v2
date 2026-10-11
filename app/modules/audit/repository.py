@@ -40,3 +40,29 @@ class AuditRepository:
         total = (await self.session.execute(count_q)).scalar_one()
         result = await self.session.execute(query.offset((page - 1) * page_size).limit(page_size))
         return list(result.scalars().all()), total
+
+    async def list_all_for_export(
+        self,
+        org_id: uuid.UUID,
+        limit: int = 50_000,
+        user_id: uuid.UUID | None = None,
+        resource_type: str | None = None,
+        action: str | None = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> list[AuditLog]:
+        """Return all matching audit logs (newest first), capped at `limit`, for CSV export."""
+        query = select(AuditLog).where(AuditLog.organization_id == org_id).order_by(AuditLog.created_at.desc())
+        if user_id:
+            query = query.where(AuditLog.user_id == user_id)
+        if resource_type:
+            query = query.where(AuditLog.resource_type == resource_type)
+        if action:
+            query = query.where(AuditLog.action == action)
+        if from_date:
+            query = query.where(AuditLog.created_at >= datetime.combine(from_date, time.min, tzinfo=UTC))
+        if to_date:
+            query = query.where(AuditLog.created_at <= datetime.combine(to_date, time.max, tzinfo=UTC))
+
+        result = await self.session.execute(query.limit(limit))
+        return list(result.scalars().all())
