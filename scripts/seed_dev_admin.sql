@@ -73,6 +73,23 @@ VALUES (
   NOW()
 ) ON CONFLICT (id) DO NOTHING;
 
+-- Membership (F1: user <-> org N:M). This script predates that migration, so it
+-- must be added explicitly — without it this user has `users.organization_id`
+-- set but no corresponding membership, inconsistent with every other user.
+INSERT INTO memberships (id, user_id, organization_id, status, is_default, created_at, updated_at)
+VALUES (
+  '00000000-0000-0000-0000-000000000005',
+  '00000000-0000-0000-0000-000000000003',
+  '00000000-0000-0000-0000-000000000001',
+  'ACTIVE',
+  true,
+  NOW(),
+  NOW()
+) ON CONFLICT (id) DO UPDATE SET
+  status = EXCLUDED.status,
+  is_default = EXCLUDED.is_default,
+  updated_at = NOW();
+
 COMMIT;
 
 SELECT email, status::text AS status FROM users WHERE email = 'admin@solidcare.health';

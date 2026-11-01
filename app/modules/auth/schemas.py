@@ -1,3 +1,5 @@
+import uuid
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -22,6 +24,10 @@ class TokenResponse(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+
+
+class SwitchOrgRequest(BaseModel):
+    organization_id: uuid.UUID
 
 
 class PasswordResetRequest(BaseModel):

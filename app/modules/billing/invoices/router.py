@@ -9,7 +9,13 @@ from app.database import get_db
 from app.modules.auth.dependencies import AuthRequired
 from app.modules.billing.invoices.models import InvoiceStatus
 from app.modules.billing.repository import InvoiceRepository, PaymentRepository
-from app.modules.billing.schemas import InvoiceCreate, InvoiceListItem, InvoiceResponse
+from app.modules.billing.schemas import (
+    InvoiceCreate,
+    InvoiceListItem,
+    InvoiceResponse,
+    PaymentResponse,
+    RefundCreate,
+)
 from app.modules.billing.service import BillingService
 from app.modules.patients.repository import PatientRepository
 from app.shared.schemas.pagination import PaginatedResponse, PaginationParams
@@ -82,3 +88,17 @@ async def cancel_invoice(
     current_user.require("billing:create")
     invoice = await service.cancel_invoice(invoice_id, current_user.org_id, reason)
     return InvoiceResponse.model_validate(invoice)
+
+
+@router.post("/{invoice_id}/refund", response_model=PaymentResponse, status_code=201)
+async def refund_invoice(
+    invoice_id: uuid.UUID,
+    payload: RefundCreate,
+    current_user: AuthRequired,
+    service: Annotated[BillingService, Depends(get_billing_service)],
+) -> PaymentResponse:
+    current_user.require("billing:create")
+    refund = await service.refund_payment(
+        invoice_id, current_user.org_id, payload, current_user.user_id
+    )
+    return PaymentResponse.model_validate(refund)
