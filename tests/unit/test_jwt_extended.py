@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-pytest.importorskip("jose")
+pytest.importorskip("jwt")
 
-from jose import jwt
+import jwt
 
 from app.core.exceptions.errors import UnauthorizedError
 from app.core.security.jwt import (

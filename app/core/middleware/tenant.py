@@ -8,8 +8,9 @@ so that all repository queries are automatically scoped to the tenant.
 import uuid
 from contextvars import ContextVar
 
+import jwt
 from fastapi import Request
-from jose import JWTError, jwt
+from jwt import PyJWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
@@ -42,7 +43,7 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
                     _tenant_ctx.set(uuid.UUID(org_id))
                 if user_id:
                     _user_ctx.set(uuid.UUID(user_id))
-            except (JWTError, ValueError):
+            except (PyJWTError, ValueError):
                 pass
 
         response = await call_next(request)

@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-pytest.importorskip("jose")
+pytest.importorskip("jwt")
 
 from app.core.security.jwt import create_access_token, create_refresh_token, decode_token
 from app.modules.auth.dependencies import CurrentUser
