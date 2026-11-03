@@ -15,6 +15,7 @@ def create_access_token(
     permissions: list[str],
     roles: list[str],
     is_superadmin: bool = False,
+    memberships: list[dict] | None = None,
 ) -> str:
     expire = datetime.now(UTC) + timedelta(
         minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
@@ -23,6 +24,11 @@ def create_access_token(
         "sub": subject,
         "user_id": str(user_id),
         "org_id": str(org_id),
+        # `active_org_id` mirrors `org_id` today. It is the field new code should
+        # read going forward — org-switching (F2) will change it independently of
+        # `org_id`, which stays as-is for backward compatibility during the migration.
+        "active_org_id": str(org_id),
+        "memberships": memberships or [],
         "clinic_ids": clinic_ids,
         "permissions": permissions,
         "roles": roles,

@@ -72,7 +72,24 @@ class AuthService:
                 mfa_token=mfa_token,
             )
 
-        return await self._issue_tokens(user)
+        return await self._issue_tokens(user, active_org_id=org_id)
+
+    async def switch_org(self, user_id: uuid.UUID, target_org_id: uuid.UUID) -> TokenResponse:
+        """Issue a fresh token pair scoped to `target_org_id`.
+
+        Rejects the switch unless the user holds an ACTIVE membership there —
+        this is the only access-control check standing between a compromised or
+        buggy client and an org it should not see. Everything downstream (route
+        handlers reading `current_user.org_id`) trusts that this check ran.
+        """
+        user = await self.repo.get_user_by_id(user_id)
+        if not user:
+            raise UnauthorizedError("User not found")
+
+        if not await self.repo.has_active_membership(user_id, target_org_id):
+            raise ForbiddenError("You do not have access to this organization")
+
+        return await self._issue_tokens(user, active_org_id=target_org_id)
 
     async def verify_mfa(self, mfa_token: str, totp_code: str) -> TokenResponse:
         payload = decode_token(mfa_token)
@@ -205,19 +222,35 @@ class AuthService:
         user.hashed_password = hash_password(new_password)
         await self._redis.delete(f"pwd_reset:{token}")
 
-    async def _issue_tokens(self, user: User) -> TokenResponse:
-        permissions = await self.repo.get_user_permissions(user.id)
-        roles = await self.repo.get_user_roles(user.id)
+    async def _issue_tokens(self, user: User, active_org_id: uuid.UUID | None = None) -> TokenResponse:
+        """Issue an access/refresh token pair scoped to `active_org_id`.
+
+        `active_org_id` defaults to the user's home org (`user.organization_id`) —
+        the pre-F2 behavior — for every existing call site (login, MFA verify,
+        refresh). Only `switch_org` passes an explicit target, and only after
+        confirming the user holds an ACTIVE membership there. Permissions and roles
+        are resolved scoped to `active_org_id` so a membership in one org can never
+        grant that org's access inside another org's session.
+        """
+        org_id = active_org_id or user.organization_id
+
+        permissions = await self.repo.get_user_permissions(user.id, org_id)
+        roles = await self.repo.get_user_roles(user.id, org_id)
         clinic_ids = await self.repo.get_user_clinic_ids(user.id)
+        memberships = await self.repo.get_user_memberships(user.id)
 
         access_token = create_access_token(
             subject=user.email,
             user_id=user.id,
-            org_id=user.organization_id,
+            org_id=org_id,
             clinic_ids=[str(c) for c in clinic_ids],
             permissions=permissions,
             roles=roles,
             is_superadmin=user.is_superadmin,
+            memberships=[
+                {"org_id": str(m.organization_id), "is_default": m.is_default}
+                for m in memberships
+            ],
         )
         refresh_token, jti = create_refresh_token(user.id)
         if self._redis:
