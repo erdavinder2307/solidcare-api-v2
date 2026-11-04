@@ -17,6 +17,7 @@ from app.modules.auth.schemas import (
     PasswordResetConfirm,
     PasswordResetRequest,
     RefreshTokenRequest,
+    SwitchOrgRequest,
     TokenResponse,
 )
 from app.modules.auth.service import AuthService
@@ -54,6 +55,15 @@ async def refresh_token(
     service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> TokenResponse:
     return await service.refresh_token(payload.refresh_token)
+
+
+@router.post("/switch-org", response_model=TokenResponse, summary="Switch the active organization")
+async def switch_org(
+    payload: SwitchOrgRequest,
+    current_user: AuthRequired,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> TokenResponse:
+    return await service.switch_org(current_user.user_id, payload.organization_id)
 
 
 @router.post("/logout", status_code=204, summary="Logout and revoke refresh token")

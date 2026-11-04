@@ -6,9 +6,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-pytest.importorskip("jose")
+pytest.importorskip("jwt")
 
-from jose import jwt
+import jwt
 
 from app.core.exceptions.errors import UnauthorizedError
 from app.core.security.jwt import (
@@ -148,8 +148,11 @@ class TestDecodeTokenErrors:
 
     def test_tampered_signature_raises_unauthorized(self):
         token = _make_access_token()
-        # Flip the last character of the token to corrupt the signature
-        tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+        # Change the first character of the signature. Not the last one: in base64url its low bits
+        # are padding, so A -> B there leaves the signature bytes unchanged (failed ~1 run in 16).
+        header, payload, signature = token.split(".")
+        signature = ("A" if signature[0] != "A" else "B") + signature[1:]
+        tampered = f"{header}.{payload}.{signature}"
         with pytest.raises(UnauthorizedError):
             decode_token(tampered)
 

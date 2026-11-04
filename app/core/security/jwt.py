@@ -1,7 +1,8 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 
 from app.config import settings
 from app.core.exceptions.errors import UnauthorizedError
@@ -15,6 +16,7 @@ def create_access_token(
     permissions: list[str],
     roles: list[str],
     is_superadmin: bool = False,
+    memberships: list[dict] | None = None,
 ) -> str:
     expire = datetime.now(UTC) + timedelta(
         minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
@@ -23,6 +25,11 @@ def create_access_token(
         "sub": subject,
         "user_id": str(user_id),
         "org_id": str(org_id),
+        # `active_org_id` mirrors `org_id` today. It is the field new code should
+        # read going forward — org-switching (F2) will change it independently of
+        # `org_id`, which stays as-is for backward compatibility during the migration.
+        "active_org_id": str(org_id),
+        "memberships": memberships or [],
         "clinic_ids": clinic_ids,
         "permissions": permissions,
         "roles": roles,
@@ -55,7 +62,7 @@ def decode_token(token: str) -> dict:
             token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
         )
         return payload
-    except JWTError as exc:
+    except PyJWTError as exc:
         raise UnauthorizedError("Invalid or expired token") from exc
 
 

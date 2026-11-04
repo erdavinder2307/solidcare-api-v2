@@ -94,6 +94,20 @@ VALUES (
   is_active = EXCLUDED.is_active,
   updated_at = NOW();
 
+-- Membership (F1: user <-> org N:M). This script predates that migration, so it
+-- must be added explicitly — without it these users have `users.organization_id`
+-- set but no corresponding membership, inconsistent with every other user.
+INSERT INTO memberships (id, user_id, organization_id, status, is_default, created_at, updated_at)
+VALUES
+  ('00000000-0000-0000-0000-000000000040', '00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', 'ACTIVE', true, NOW(), NOW()),
+  ('00000000-0000-0000-0000-000000000041', '00000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000001', 'ACTIVE', true, NOW(), NOW()),
+  ('00000000-0000-0000-0000-000000000042', '00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000001', 'ACTIVE', true, NOW(), NOW()),
+  ('00000000-0000-0000-0000-000000000043', '00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000001', 'ACTIVE', true, NOW(), NOW())
+ON CONFLICT (id) DO UPDATE SET
+  status = EXCLUDED.status,
+  is_default = EXCLUDED.is_default,
+  updated_at = NOW();
+
 COMMIT;
 
 SELECT u.email, r.slug AS role, u.status::text AS status

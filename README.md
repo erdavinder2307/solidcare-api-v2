@@ -24,6 +24,17 @@ docker exec -i solidcare_db psql -U solidcare -d solidcare_dev < scripts/seed_de
 uvicorn app.main:app --reload
 ```
 
+> **Not running Postgres via `docker compose`?** (e.g. a local Homebrew/native
+> install) — run the same two scripts with `psql` directly instead of `docker exec`:
+> ```bash
+> psql -h localhost -p 5432 -U solidcare -d solidcare_dev -f scripts/seed_dev_admin.sql
+> psql -h localhost -p 5432 -U solidcare -d solidcare_dev -f scripts/seed_dev_rbac_users.sql
+> ```
+> Both scripts are idempotent (safe to re-run) and target whichever `solidcare_dev`
+> the connection points at — make sure that's the same Postgres your running API
+> actually uses (check `DATABASE_URL` in `.env`), not a leftover Docker container
+> on the same port.
+
 ## Project Structure
 
 ```

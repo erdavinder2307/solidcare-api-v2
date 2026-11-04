@@ -15,7 +15,7 @@ redis==5.2.1
 celery[redis]==5.4.0
 
 # Authentication & Security
-python-jose[cryptography]==3.4.0
+PyJWT==2.15.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1  # passlib 1.7.4 breaks with bcrypt 5.x
 pyotp==2.9.0

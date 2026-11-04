@@ -6,7 +6,8 @@ import logging
 import uuid
 from typing import Any
 
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
@@ -28,7 +29,7 @@ def extract_actor_from_request(request: Request) -> tuple[uuid.UUID | None, uuid
         user_id = uuid.UUID(payload["user_id"]) if payload.get("user_id") else None
         email = payload.get("sub")
         return org_id, user_id, email
-    except (JWTError, ValueError, KeyError):
+    except (PyJWTError, ValueError, KeyError):
         return None, None, None
 
 
