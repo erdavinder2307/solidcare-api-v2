@@ -1,10 +1,11 @@
 import uuid
 from datetime import date
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.appointments.models import Appointment, AppointmentStatus
+from app.modules.patients.models import Patient
 from app.shared.schemas.pagination import PaginationParams
 from app.shared.utils.pagination import paginate
 
@@ -73,6 +74,7 @@ class AppointmentRepository:
         patient_id: uuid.UUID | None = None,
         appointment_date: date | None = None,
         status: AppointmentStatus | None = None,
+        search: str | None = None,
     ) -> tuple[list[Appointment], int]:
         query = select(Appointment).where(
             Appointment.organization_id == org_id,
@@ -88,6 +90,18 @@ class AppointmentRepository:
             query = query.where(Appointment.appointment_date == appointment_date)
         if status:
             query = query.where(Appointment.status == status)
+        if search:
+            term = search.strip()
+            conditions = [
+                Appointment.chief_complaint.ilike(f"%{term}%"),
+                func.lower(func.concat(Patient.first_name, " ", Patient.last_name)).contains(term.lower()),
+                Patient.phone.contains(term),
+                Patient.uhid.contains(term.upper()),
+            ]
+            # Only match token when the numeric term fits a 32-bit int (phone numbers overflow).
+            if term.isdigit() and int(term) <= 2_147_483_647:
+                conditions.append(Appointment.token_number == int(term))
+            query = query.join(Patient, Patient.id == Appointment.patient_id).where(or_(*conditions))
 
         query = query.order_by(Appointment.appointment_date.desc(), Appointment.start_time)
         return await paginate(self.session, query, params)
