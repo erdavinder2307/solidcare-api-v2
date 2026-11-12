@@ -61,6 +61,22 @@ class Settings(BaseSettings):
     MSG91_AUTH_KEY: str = ""
     MSG91_SENDER_ID: str = "SOLID"
 
+    # Appointment reminders (SE-4194). The whole real sending path is OFF by default:
+    # nothing goes out unless REMINDERS_ENABLED is true AND a provider is chosen.
+    REMINDERS_ENABLED: bool = False
+    REMINDER_LEAD_HOURS: int = 24
+    REMINDER_TIMEZONE: str = "Asia/Kolkata"  # clinic.settings["timezone"] overrides
+    REMINDER_DEFAULT_COUNTRY_CODE: str = "91"
+    REMINDER_WHATSAPP_PROVIDER: Literal["none", "meta"] = "none"
+    REMINDER_SMS_PROVIDER: Literal["none"] = "none"  # no SMS provider chosen yet
+
+    # Meta WhatsApp Cloud API (used only when REMINDER_WHATSAPP_PROVIDER=meta)
+    WHATSAPP_CLOUD_API_TOKEN: str = ""
+    WHATSAPP_CLOUD_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_CLOUD_API_VERSION: str = "v21.0"
+    WHATSAPP_REMINDER_TEMPLATE_NAME: str = "appointment_reminder"
+    WHATSAPP_REMINDER_TEMPLATE_LANGUAGE: str = "en"
+
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 

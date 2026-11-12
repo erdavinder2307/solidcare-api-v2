@@ -22,10 +22,12 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     beat_schedule={
+        # Lead time from settings (REMINDER_LEAD_HOURS, default 24). Nothing is sent
+        # unless REMINDERS_ENABLED is true.
         "appointment-reminders-24h": {
             "task": "app.core.background.tasks.notification_tasks.send_appointment_reminders",
             "schedule": 3600.0,
-            "kwargs": {"hours_before": 24},
+            "kwargs": {"hours_before": settings.REMINDER_LEAD_HOURS},
         },
         "appointment-reminders-2h": {
             "task": "app.core.background.tasks.notification_tasks.send_appointment_reminders",
