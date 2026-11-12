@@ -3,6 +3,7 @@ from enum import Enum
 
 from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy import false as sa_false
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,6 +54,11 @@ class Organization(BaseModel):
     # or rely on this column in new code; it is retained (not dropped) until F6
     # (Postgres RLS) lands and a repo-wide grep confirms nothing references it.
     schema_name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    # Demo tenant (SE-4193): destructive operations are blocked and every outbound
+    # message (SMS, WhatsApp, email) is suppressed — see app/core/demo.py.
+    is_demo: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa_false(), nullable=False
+    )
 
     clinics: Mapped[list["Clinic"]] = relationship("Clinic", back_populates="organization")
 

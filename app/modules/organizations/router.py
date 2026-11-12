@@ -17,6 +17,7 @@ class OrganizationResponse(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
+    is_demo: bool = False
 
     model_config = {"from_attributes": True}
 
