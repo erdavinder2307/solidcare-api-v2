@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 
 from app.config import settings
 
@@ -9,6 +10,7 @@ celery_app = Celery(
     include=[
         "app.core.background.tasks.notification_tasks",
         "app.core.background.tasks.report_tasks",
+        "app.core.background.tasks.demo_tasks",
     ],
 )
 
@@ -31,6 +33,11 @@ celery_app.conf.update(
             "task": "app.core.background.tasks.notification_tasks.send_appointment_reminders",
             "schedule": 1800.0,
             "kwargs": {"hours_before": 2},
+        },
+        # Demo tenant only (SE-4193): clear visitor changes and re-seed, 03:30 IST.
+        "demo-tenant-reset-nightly": {
+            "task": "app.core.background.tasks.demo_tasks.reset_demo_tenant_nightly",
+            "schedule": crontab(hour=3, minute=30),
         },
     },
 )
