@@ -43,6 +43,12 @@ class ForbiddenError(SolidcareException):
         super().__init__(detail)
 
 
+class DemoReadOnlyError(ForbiddenError):
+    """Refused because the target organization is the demo tenant (SE-4193)."""
+
+    error_code = "DEMO_READ_ONLY"
+
+
 class ConflictError(SolidcareException):
     status_code = 409
     error_code = "CONFLICT"

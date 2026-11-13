@@ -9,12 +9,21 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
 from app.config import settings
+from app.core.demo import outbound_messages_allowed
 
 logger = logging.getLogger(__name__)
 
 
-def send_email_via_sendgrid(to_email: str, subject: str, body_text: str, body_html: str | None = None) -> bool:
+# Every outbound provider call (email, SMS and any future WhatsApp sender) MUST take
+# `org_id` and pass `outbound_messages_allowed` first: demo tenants never send (SE-4193).
+
+
+def send_email_via_sendgrid(
+    to_email: str, subject: str, body_text: str, body_html: str | None = None, *, org_id: str | None
+) -> bool:
     """Send an email using SendGrid. Returns False when provider is not configured or call fails."""
+    if not outbound_messages_allowed(org_id, "email"):
+        return False
     if not settings.SENDGRID_API_KEY:
         logger.warning("SENDGRID_API_KEY not configured; skipping email delivery to %s", to_email)
         return False
@@ -38,8 +47,10 @@ def send_email_via_sendgrid(to_email: str, subject: str, body_text: str, body_ht
         return False
 
 
-def send_sms_via_msg91(phone: str, message: str) -> bool:
+def send_sms_via_msg91(phone: str, message: str, *, org_id: str | None) -> bool:
     """Send SMS using MSG91 API. Returns False when provider is not configured or call fails."""
+    if not outbound_messages_allowed(org_id, "sms"):
+        return False
     if not settings.MSG91_AUTH_KEY:
         logger.warning("MSG91_AUTH_KEY not configured; skipping SMS delivery to %s", phone)
         return False

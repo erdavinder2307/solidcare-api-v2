@@ -29,6 +29,8 @@ class AppointmentBooked(DomainEvent):
     appointment_time: str
     patient_phone: str
     patient_email: str | None
+    # Owning org, carried to the outbound-message tasks so demo tenants never send.
+    org_id: uuid.UUID | None = None
 
 
 @dataclass
@@ -86,10 +88,11 @@ async def on_appointment_booked(event: AppointmentBooked) -> None:
         "body": f"Your appointment is booked for {event.appointment_date} at {event.appointment_time}.",
     }
 
+    org_id = str(event.org_id) if event.org_id else None
     if event.patient_phone:
-        send_sms_notification.delay(event.patient_phone, "appointment_booked", sms_context)
+        send_sms_notification.delay(event.patient_phone, "appointment_booked", sms_context, org_id=org_id)
     if event.patient_email:
-        send_email_notification.delay(event.patient_email, "appointment_booked", email_context)
+        send_email_notification.delay(event.patient_email, "appointment_booked", email_context, org_id=org_id)
 
 
 @event_bus.subscribe(AppointmentCancelled)

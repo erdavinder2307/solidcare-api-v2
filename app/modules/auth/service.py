@@ -2,7 +2,12 @@ import logging
 import uuid
 
 from app.config import settings
-from app.core.exceptions.errors import ForbiddenError, NotFoundError, UnauthorizedError
+from app.core.exceptions.errors import (
+    DemoReadOnlyError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
+)
 from app.core.security.jwt import (
     create_access_token,
     create_mfa_token,
@@ -27,6 +32,9 @@ logger = logging.getLogger(__name__)
 _REDIS_OP_TIMEOUT = 2.0
 
 MAX_FAILED_ATTEMPTS = 5
+
+# The demo clinic's staff logins are shared by every demo viewer (SE-4193).
+DEMO_PASSWORD_RESET_DETAIL = "Password reset is not available in the demo clinic"
 
 
 class AuthService:
@@ -196,6 +204,9 @@ class AuthService:
         user.hashed_password = hash_password(new_password)
 
     async def request_password_reset(self, email: str, org_id: uuid.UUID) -> str | None:
+        # Checked before the user lookup, so the answer does not reveal whether the email exists.
+        if await self.repo.is_demo_org(org_id):
+            raise DemoReadOnlyError(DEMO_PASSWORD_RESET_DETAIL)
         user = await self.repo.get_user_by_email(email.lower(), org_id)
         if not user:
             return None
@@ -219,6 +230,9 @@ class AuthService:
         user = await self.repo.get_user_by_id(uuid.UUID(user_id_str))
         if not user:
             raise NotFoundError("User", user_id_str)
+        if await self.repo.is_demo_org(user.organization_id):
+            await self._redis.delete(f"pwd_reset:{token}")
+            raise DemoReadOnlyError(DEMO_PASSWORD_RESET_DETAIL)
         user.hashed_password = hash_password(new_password)
         await self._redis.delete(f"pwd_reset:{token}")
 
