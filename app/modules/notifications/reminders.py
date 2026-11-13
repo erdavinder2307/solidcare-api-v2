@@ -5,13 +5,17 @@ Flow, per run (one Celery beat entry per lead time, e.g. 24h and 2h):
      read and nothing is sent.
   2. For each active organization, inside that org's RLS context
      (``SET LOCAL app.current_org_id``), load SCHEDULED/CONFIRMED appointments of
-     live patients that have no reminder row of this kind yet.
+     live patients at active clinics that have no reminder row of this kind for
+     their current slot (date + start time) yet.
   3. Keep the ones that start within (now, now + lead time] in the clinic's time zone.
   4. Per appointment: skip when the patient has no usable phone; otherwise CLAIM by
-     inserting the appointment_reminders row (UNIQUE appointment_id + kind) and
-     committing BEFORE any provider call. A lost claim (second run, concurrent
+     inserting the appointment_reminders row (UNIQUE appointment_id + kind + slot)
+     and committing BEFORE any provider call. A lost claim (second run, concurrent
      worker, Celery retry) means skip. Then WhatsApp, then SMS as fallback, and the
      outcome is written to the claimed row.
+
+The slot is part of the key because rescheduling moves date/time on the same
+appointment row: the new slot gets its own reminder, the same slot never gets two.
 
 Delivery is at-most-once: a FAILED or stuck PENDING row is never retried
 automatically, because a provider may have delivered even when it reported an error.
@@ -75,8 +79,10 @@ class ReminderRepository(Protocol):
         self, org_id: uuid.UUID, now: datetime, hours_before: int, kind: str
     ) -> list[ReminderCandidate]: ...
 
-    async def claim(self, org_id: uuid.UUID, appointment_id: uuid.UUID, kind: str) -> uuid.UUID | None:
-        """Insert the reminder row; return its id, or None if it already exists."""
+    async def claim(
+        self, org_id: uuid.UUID, appointment_id: uuid.UUID, kind: str, slot_date: date, slot_start_time: str
+    ) -> uuid.UUID | None:
+        """Insert the reminder row for this slot; return its id, or None if it already exists."""
         ...
 
     async def finish(
@@ -200,7 +206,9 @@ async def run_appointment_reminders(
                     if phone is None:
                         counts["skipped_no_phone"] += 1
                         continue
-                    reminder_id = await repo.claim(org_id, candidate.appointment_id, kind)
+                    reminder_id = await repo.claim(
+                        org_id, candidate.appointment_id, kind, candidate.appointment_date, candidate.start_time
+                    )
                     if reminder_id is None:
                         counts["skipped_already_claimed"] += 1
                         continue
@@ -286,17 +294,20 @@ class PostgresReminderRepository:
                 for r in rows
             ]
 
-    async def claim(self, org_id: uuid.UUID, appointment_id: uuid.UUID, kind: str) -> uuid.UUID | None:
+    async def claim(
+        self, org_id: uuid.UUID, appointment_id: uuid.UUID, kind: str, slot_date: date, slot_start_time: str
+    ) -> uuid.UUID | None:
         async with self._session_factory() as session, session.begin():
             await self._set_org(session, org_id)
             row = await session.execute(
                 _CLAIM_SQL,
                 {"id": uuid.uuid4(), "org_id": org_id, "appointment_id": appointment_id, "kind": kind,
+                 "slot_date": slot_date, "slot_start_time": slot_start_time,
                  "status": ReminderStatus.PENDING.value},
             )
             claimed = row.first()
+            # committed on leaving the block: the claim is visible before any send
             return claimed[0] if claimed else None
-        # committed on leaving the block: the claim is visible before any send
 
     async def finish(
         self, org_id: uuid.UUID, reminder_id: uuid.UUID, appointment_id: uuid.UUID, outcome: DeliveryOutcome
@@ -334,20 +345,23 @@ _CANDIDATES_SQL = text(
     WHERE a.organization_id = :org_id
       AND a.deleted_at IS NULL
       AND p.deleted_at IS NULL
+      AND c.is_active
       AND a.status::text IN ({eligible})
       AND a.appointment_date BETWEEN :date_from AND :date_to
       AND NOT EXISTS (
           SELECT 1 FROM appointment_reminders r
           WHERE r.appointment_id = a.id AND r.kind = :kind
+            AND r.slot_date = a.appointment_date AND r.slot_start_time = a.start_time
       )
     """.format(eligible=", ".join(repr(x) for x in ELIGIBLE_STATUSES))
 )
 
 _CLAIM_SQL = text(
     """
-    INSERT INTO appointment_reminders (id, organization_id, appointment_id, kind, status, created_at, updated_at)
-    VALUES (:id, :org_id, :appointment_id, :kind, :status, now(), now())
-    ON CONFLICT (appointment_id, kind) DO NOTHING
+    INSERT INTO appointment_reminders
+        (id, organization_id, appointment_id, kind, slot_date, slot_start_time, status, created_at, updated_at)
+    VALUES (:id, :org_id, :appointment_id, :kind, :slot_date, :slot_start_time, :status, now(), now())
+    ON CONFLICT (appointment_id, kind, slot_date, slot_start_time) DO NOTHING
     RETURNING id
     """
 )

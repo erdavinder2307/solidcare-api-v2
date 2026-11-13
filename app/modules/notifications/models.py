@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -77,14 +77,20 @@ class ReminderStatus(str, Enum):
 
 
 class AppointmentReminder(BaseModel):
-    """One row per (appointment, reminder kind). The unique constraint is the
+    """One row per (appointment, reminder kind, scheduled slot). The slot
+    (slot_date + slot_start_time, copied verbatim from the appointment) is part of
+    the key so a rescheduled appointment gets a reminder for its new slot. The unique
+    constraint is the
     guarantee that a reminder is never sent twice: a worker inserts (claims) the
     row and commits BEFORE calling any provider; a second run or a concurrent
     worker hits the constraint and skips."""
 
     __tablename__ = "appointment_reminders"
     __table_args__ = (
-        UniqueConstraint("appointment_id", "kind", name="uq_appointment_reminders_appointment_kind"),
+        UniqueConstraint(
+            "appointment_id", "kind", "slot_date", "slot_start_time",
+            name="uq_appointment_reminders_appointment_kind_slot",
+        ),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -94,6 +100,8 @@ class AppointmentReminder(BaseModel):
         UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=False, index=True
     )
     kind: Mapped[str] = mapped_column(String(16), nullable=False)  # e.g. "24h", "2h"
+    slot_date: Mapped[date] = mapped_column(Date, nullable=False)  # appointment_date when sent
+    slot_start_time: Mapped[str] = mapped_column(String(8), nullable=False)  # start_time when sent
     status: Mapped[str] = mapped_column(String(16), nullable=False, default=ReminderStatus.PENDING.value)
     channel: Mapped[str | None] = mapped_column(String(16))  # "whatsapp" / "sms" when sent
     provider_message_id: Mapped[str | None] = mapped_column(String(200))

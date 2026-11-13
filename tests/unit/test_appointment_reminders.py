@@ -4,6 +4,7 @@ no database, no network. Phone numbers are obviously fake (+910000000001 style).
 import json
 import logging
 import uuid
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -58,22 +59,27 @@ def candidate(hours_from_now: float, *, status="SCHEDULED", phone=FAKE_PHONE, tz
 
 
 class InMemoryRepo:
-    """Mirrors PostgresReminderRepository: fetch excludes already-claimed rows,
-    claim is insert-or-nothing on (appointment_id, kind)."""
+    """Mirrors PostgresReminderRepository: fetch excludes rows already claimed for
+    the appointment's current slot, claim is insert-or-nothing on
+    (appointment_id, kind, slot_date, slot_start_time)."""
 
     def __init__(self, candidates, steal_claims=False):
         self.candidates = list(candidates)
-        self.rows: dict[tuple[uuid.UUID, str], dict] = {}
+        self.rows: dict[tuple[uuid.UUID, str, date, str], dict] = {}
         self.steal_claims = steal_claims  # simulate another worker winning every claim
 
     async def list_org_ids(self):
         return [ORG]
 
     async def fetch_candidates(self, org_id, now, hours_before, kind):
-        return [c for c in self.candidates if c.organization_id == org_id and (c.appointment_id, kind) not in self.rows]
+        return [
+            c for c in self.candidates
+            if c.organization_id == org_id
+            and (c.appointment_id, kind, c.appointment_date, c.start_time) not in self.rows
+        ]
 
-    async def claim(self, org_id, appointment_id, kind):
-        key = (appointment_id, kind)
+    async def claim(self, org_id, appointment_id, kind, slot_date, slot_start_time):
+        key = (appointment_id, kind, slot_date, slot_start_time)
         if self.steal_claims and key not in self.rows:
             self.rows[key] = {"id": uuid.uuid4(), "status": "pending", "owner": "other-worker"}
         if key in self.rows:
@@ -92,7 +98,18 @@ class InMemoryRepo:
         raise AssertionError("finish() for an unclaimed reminder")
 
     def row(self, appointment_id, kind="24h"):
-        return self.rows[(appointment_id, kind)]
+        matches = [r for (aid, k, *_), r in self.rows.items() if aid == appointment_id and k == kind]
+        assert len(matches) == 1, f"expected one {kind} row, found {len(matches)}"
+        return matches[0]
+
+    def reschedule(self, appointment_id, hours_from_now):
+        """AppointmentService.update(): same row, new date/time."""
+        for i, c in enumerate(self.candidates):
+            if c.appointment_id == appointment_id:
+                start = NOW.astimezone(IST) + timedelta(hours=hours_from_now)
+                self.candidates[i] = replace(
+                    c, appointment_date=start.date(), start_time=start.strftime("%H:%M:%S")
+                )
 
 
 class ExplodingRepo:
@@ -199,6 +216,23 @@ async def test_lost_claim_sends_nothing():
 
     assert result["skipped_already_claimed"] == 1
     assert wa.sent == [] and sms.sent == []
+
+
+async def test_rescheduled_appointment_gets_one_reminder_for_the_new_slot():
+    c = candidate(5)
+    repo, wa, sms = InMemoryRepo([c]), FakeProvider("whatsapp"), FakeProvider("sms")
+
+    first = await run(repo, wa, sms)
+    repo.reschedule(c.appointment_id, 8)  # same appointment row, moved 3h later
+    second = await run(repo, wa, sms)
+    third = await run(repo, wa, sms)
+
+    assert first["sent_whatsapp"] == 1
+    assert second["sent_whatsapp"] == 1 and second["skipped_already_claimed"] == 0
+    assert third["sent_whatsapp"] == 0 and third["due"] == 0
+    assert [m.time_text for m in wa.sent] == ["3:00 PM", "6:00 PM"]
+    slots = sorted(slot for (aid, kind, *slot) in repo.rows if aid == c.appointment_id and kind == "24h")
+    assert slots == [[date(2026, 11, 12), "15:00:00"], [date(2026, 11, 12), "18:00:00"]]
 
 
 async def test_24h_and_2h_reminders_are_separate_kinds():
@@ -430,12 +464,13 @@ async def test_postgres_claim_sets_org_context_and_uses_on_conflict(returning, e
     log = []
     repo = PostgresReminderRepository(lambda: RecordingSession(log, returning))
 
-    claimed = await repo.claim(ORG, uuid.uuid4(), "24h")
+    claimed = await repo.claim(ORG, uuid.uuid4(), "24h", date(2026, 11, 12), "15:00:00")
 
     assert (claimed is not None) is expected_claimed
     assert log[0][0] == f"SET LOCAL app.current_org_id = '{ORG}'"
     assert "INSERT INTO appointment_reminders" in log[1][0]
-    assert "ON CONFLICT (appointment_id, kind) DO NOTHING" in log[1][0]
+    assert "ON CONFLICT (appointment_id, kind, slot_date, slot_start_time) DO NOTHING" in log[1][0]
+    assert log[1][1]["slot_date"] == date(2026, 11, 12) and log[1][1]["slot_start_time"] == "15:00:00"
 
 
 async def test_postgres_fetch_filters_status_deleted_and_existing_reminders():
@@ -454,3 +489,5 @@ async def test_postgres_fetch_filters_status_deleted_and_existing_reminders():
     assert "a.status::text IN ('SCHEDULED', 'CONFIRMED')" in sql
     assert "a.deleted_at IS NULL" in sql and "p.deleted_at IS NULL" in sql
     assert "NOT EXISTS" in sql and "r.kind = :kind" in sql
+    assert "r.slot_date = a.appointment_date AND r.slot_start_time = a.start_time" in sql
+    assert "AND c.is_active" in sql

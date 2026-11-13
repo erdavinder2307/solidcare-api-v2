@@ -5,8 +5,11 @@ Revises: b2c3d4e5f6a7
 Create Date: 2026-11-12 00:00:00.000000
 
 SE-4194. Records every appointment reminder attempt so the scheduled job never
-sends the same reminder twice: UNIQUE (appointment_id, kind) and the job inserts
-(claims) the row before it calls any provider.
+sends the same reminder twice: UNIQUE (appointment_id, kind, slot_date,
+slot_start_time) and the job inserts (claims) the row before it calls any provider.
+slot_date / slot_start_time are verbatim copies of the appointment's
+appointment_date / start_time (clinic local time) at send time, so a reschedule
+(same appointment row, new date/time) gets its own reminder for the new slot.
 
 Tenant isolation follows b2c3d4e5f6a7: the table carries organization_id, has
 ROW LEVEL SECURITY ENABLED + FORCED and the same `tenant_isolation` policy on
@@ -34,6 +37,8 @@ def upgrade() -> None:
         sa.Column("organization_id", sa.UUID(), nullable=False),
         sa.Column("appointment_id", sa.UUID(), nullable=False),
         sa.Column("kind", sa.String(length=16), nullable=False),
+        sa.Column("slot_date", sa.Date(), nullable=False),
+        sa.Column("slot_start_time", sa.String(length=8), nullable=False),
         sa.Column("status", sa.String(length=16), nullable=False),
         sa.Column("channel", sa.String(length=16), nullable=True),
         sa.Column("provider_message_id", sa.String(length=200), nullable=True),
@@ -47,7 +52,10 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"]),
         sa.ForeignKeyConstraint(["appointment_id"], ["appointments.id"]),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("appointment_id", "kind", name="uq_appointment_reminders_appointment_kind"),
+        sa.UniqueConstraint(
+            "appointment_id", "kind", "slot_date", "slot_start_time",
+            name="uq_appointment_reminders_appointment_kind_slot",
+        ),
     )
     op.create_index(op.f("ix_appointment_reminders_organization_id"), TABLE, ["organization_id"])
     op.create_index(op.f("ix_appointment_reminders_appointment_id"), TABLE, ["appointment_id"])
