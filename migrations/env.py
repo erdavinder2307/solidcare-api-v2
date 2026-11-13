@@ -29,7 +29,7 @@ from app.modules.medicines.models import Medicine  # noqa: F401, E402
 from app.modules.prescriptions.models import Prescription, PrescriptionItem  # noqa: F401, E402
 from app.modules.billing.invoices.models import Invoice, InvoiceLineItem, ServiceChargeMaster  # noqa: F401, E402
 from app.modules.billing.payments.models import Payment  # noqa: F401, E402
-from app.modules.notifications.models import Notification  # noqa: F401, E402
+from app.modules.notifications.models import AppointmentReminder, Notification  # noqa: F401, E402
 from app.modules.audit.models import AuditLog  # noqa: F401, E402
 
 target_metadata = Base.metadata
