@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,10 +65,9 @@ async def reset_demo_data(
     )
     if result.scalar_one_or_none() is not True:
         raise ForbiddenError("Only the demo clinic can be reset")
-    try:
-        from scripts.reset_demo_tenant import DemoResetRefused, reset_demo_tenant
-    except ImportError as exc:
-        raise HTTPException(status_code=503, detail="Demo reset is not available on this server") from exc
+    # Imported here so Faker (used by the seed) is only loaded when a reset runs.
+    from app.core.demo_tenant.reset import DemoResetRefused, reset_demo_tenant
+
     try:
         outcome = await reset_demo_tenant(session, current_user.org_id)
     except DemoResetRefused as exc:

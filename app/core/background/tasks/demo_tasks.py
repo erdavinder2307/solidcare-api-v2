@@ -18,11 +18,9 @@ def reset_demo_tenant_nightly(self) -> dict:
     is_demo = TRUE; a refusal (e.g. no demo org in this environment) is logged
     and reported as skipped rather than retried.
     """
-    try:
-        from scripts.reset_demo_tenant import DemoResetRefused, run_reset
-    except ImportError:
-        logger.error("Demo reset skipped: scripts.reset_demo_tenant is not deployed here")
-        return {"status": "unavailable"}
+    # Imported here so Faker is only loaded by the worker that runs the reset.
+    from app.core.demo_tenant.reset import DemoResetRefused, run_reset
+
     try:
         result = asyncio.run(run_reset())
     except DemoResetRefused as exc:

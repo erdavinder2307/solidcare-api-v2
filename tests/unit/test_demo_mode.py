@@ -269,3 +269,79 @@ def test_guard_is_registered_on_the_real_app():
     from app.main import app
 
     assert DemoGuardMiddleware in [m.cls for m in app.user_middleware]
+
+
+# ---------------------------------------------------------------------------
+# Password reset is refused for the demo clinic's shared logins
+# ---------------------------------------------------------------------------
+
+
+def _auth_service(demo_orgs: set[uuid.UUID], user=None):
+    from app.modules.auth.service import AuthService
+
+    repo = MagicMock()
+    repo.is_demo_org = AsyncMock(side_effect=lambda org_id: org_id in demo_orgs)
+    repo.get_user_by_email = AsyncMock(return_value=user)
+    repo.get_user_by_id = AsyncMock(return_value=user)
+    service = AuthService(repo)
+    service._redis = MagicMock()
+    service._redis.setex = AsyncMock()
+    service._redis.delete = AsyncMock()
+    service._redis.get = AsyncMock(return_value=str(user.id) if user else None)
+    return service, repo
+
+
+def _user_in(org_id: uuid.UUID):
+    return MagicMock(id=uuid.uuid4(), organization_id=org_id, hashed_password="old-hash")
+
+
+class TestDemoPasswordReset:
+    async def test_request_refused_for_demo_org_before_user_lookup(self):
+        from app.core.exceptions.errors import DemoReadOnlyError
+
+        service, repo = _auth_service({DEMO_ORG}, _user_in(DEMO_ORG))
+        with pytest.raises(DemoReadOnlyError, match="demo clinic"):
+            await service.request_password_reset("admin@demo.example.com", DEMO_ORG)
+        repo.get_user_by_email.assert_not_awaited()  # no user enumeration
+        service._redis.setex.assert_not_awaited()
+
+    async def test_request_allowed_for_real_org(self):
+        service, _ = _auth_service({DEMO_ORG}, _user_in(REAL_ORG))
+        token = await service.request_password_reset("someone@example.test", REAL_ORG)
+        assert token
+        service._redis.setex.assert_awaited_once()
+
+    async def test_confirm_refused_for_demo_org_user(self):
+        from app.core.exceptions.errors import DemoReadOnlyError
+
+        user = _user_in(DEMO_ORG)
+        service, _ = _auth_service({DEMO_ORG}, user)
+        with pytest.raises(DemoReadOnlyError):
+            await service.confirm_password_reset("tok", "new-password-123")
+        assert user.hashed_password == "old-hash"
+        service._redis.delete.assert_awaited_once_with("pwd_reset:tok")  # token burned
+
+    async def test_confirm_allowed_for_real_org_user(self):
+        user = _user_in(REAL_ORG)
+        service, _ = _auth_service({DEMO_ORG}, user)
+        await service.confirm_password_reset("tok", "new-password-123")
+        assert user.hashed_password != "old-hash"
+
+    async def test_endpoint_returns_403_demo_read_only(self):
+        from app.core.exceptions.errors import SolidcareException
+        from app.core.exceptions.handlers import solidcare_exception_handler
+        from app.modules.auth.router import get_auth_service, router
+
+        service, _ = _auth_service({DEMO_ORG}, _user_in(DEMO_ORG))
+        app = FastAPI()
+        app.add_exception_handler(SolidcareException, solidcare_exception_handler)
+        app.include_router(router, prefix="/api/v1")
+        app.dependency_overrides[get_auth_service] = lambda: service
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post("/api/v1/auth/password-reset",
+                                     json={"email": "admin@demo.example.com"},
+                                     headers={"X-Org-Id": str(DEMO_ORG)})
+        assert resp.status_code == 403
+        body = resp.json()
+        assert body["error_code"] == "DEMO_READ_ONLY"
+        assert "reset_token" not in body

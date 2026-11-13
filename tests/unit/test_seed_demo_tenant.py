@@ -1,5 +1,5 @@
 """
-Unit tests for the demo-tenant seed script (SE-4193, D1).
+Unit tests for the demo-tenant seed (SE-4193, D1): app/core/demo_tenant/seed.py and its CLI.
 
 The generator is pure, so these run without a database; the write path is exercised
 against a mocked session (statements are compiled for Postgres, never executed).
@@ -14,8 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from app.modules.appointments.models import AppointmentStatus
-from scripts.seed_demo_tenant import (
+from app.core.demo_tenant.seed import (
     DEMO_CLINIC_ID,
     DEMO_EMAIL_DOMAIN,
     DEMO_ORG_ID,
@@ -28,9 +27,10 @@ from scripts.seed_demo_tenant import (
     apply_plan,
     build_plan,
     check_target_org,
-    main,
     validate_plan,
 )
+from app.modules.appointments.models import AppointmentStatus
+from scripts.seed_demo_tenant import main
 
 TODAY = date(2026, 11, 12)
 

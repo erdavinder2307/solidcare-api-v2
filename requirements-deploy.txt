@@ -44,3 +44,6 @@ reportlab==4.2.5
 
 # Utilities
 python-dateutil==2.9.0.post0
+
+# Demo tenant seed/reset (app/core/demo_tenant): synthetic data generator
+faker==33.1.0

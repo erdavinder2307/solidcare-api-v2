@@ -18,14 +18,14 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.dialects import postgresql
 
-from scripts.reset_demo_tenant import (
+from app.core.demo_tenant.reset import (
     SEEDED_STAFF_IDS,
     DemoResetRefused,
     delete_statements,
-    main,
     reset_demo_tenant,
 )
-from scripts.seed_demo_tenant import DEMO_ORG_ID, DEMO_ORG_SLUG, SOURCE_ROLE_IDS, build_plan
+from app.core.demo_tenant.seed import DEMO_ORG_ID, DEMO_ORG_SLUG, SOURCE_ROLE_IDS, build_plan
+from scripts.reset_demo_tenant import main
 
 TODAY = date(2026, 11, 12)
 OTHER_ORG = uuid.UUID("00000000-0000-0000-0000-000000000001")  # the default (real) org
@@ -160,12 +160,58 @@ async def test_reset_runs_in_rls_context_then_deletes_then_reseeds():
         assert DEMO_ORG_ID in _uuid_params(session.statements[i])
     assert not any(s.startswith(("DELETE FROM organizations", "DELETE FROM roles"))
                    for s in sql)
-    # Re-seed keeps the stored password hash.
-    users_insert = next(s for s in session.statements if str(s).startswith("INSERT INTO users"))
-    params = users_insert.compile(dialect=postgresql.dialect()).params
-    assert {v for k, v in params.items() if k.startswith("hashed_password")} == {"stored-hash"}
+    # No DEMO_SEED_PASSWORD_HASH configured: re-seed keeps the stored password hash.
+    assert _seeded_hashes(session) == {"stored-hash"}
     assert result["seeded"]["patients"] == 50
     assert set(result["deleted"]) == {n for n, _ in delete_statements(DEMO_ORG_ID)}
+
+
+def _seeded_hashes(session) -> set:
+    users_insert = next(s for s in session.statements if str(s).startswith("INSERT INTO users"))
+    params = users_insert.compile(dialect=postgresql.dialect()).params
+    return {v for k, v in params.items() if k.startswith("hashed_password")}
+
+
+async def test_reset_restores_the_configured_password_hash(monkeypatch):
+    from app.config import settings
+    from app.core.security.password import hash_password
+
+    fixed = hash_password("demo-password-1")
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", fixed)
+    session = FakeSession(staff_hash="hash-set-by-a-visitor")
+    await reset_demo_tenant(session, DEMO_ORG_ID, today=TODAY)
+    assert _seeded_hashes(session) == {fixed}  # a hijacked demo login is undone
+
+
+async def test_explicit_password_hash_wins_over_the_setting(monkeypatch):
+    from app.config import settings
+    from app.core.security.password import hash_password
+
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", hash_password("demo-password-1"))
+    session = FakeSession()
+    await reset_demo_tenant(session, DEMO_ORG_ID, today=TODAY, password_hash="cli-hash")
+    assert _seeded_hashes(session) == {"cli-hash"}
+
+
+async def test_invalid_configured_hash_refuses_before_any_write(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", "not-a-bcrypt-hash")
+    session = FakeSession()
+    with pytest.raises(DemoResetRefused, match="DEMO_SEED_PASSWORD_HASH"):
+        await reset_demo_tenant(session, DEMO_ORG_ID, today=TODAY)
+    assert not any(s.startswith(("DELETE", "INSERT")) for s in session.sql())
+
+
+async def test_unset_hash_keeps_current_password_and_warns(monkeypatch, caplog):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", "")
+    session = FakeSession()
+    with caplog.at_level("WARNING", logger="app.core.demo_tenant.reset"):
+        await reset_demo_tenant(session, DEMO_ORG_ID, today=TODAY)
+    assert _seeded_hashes(session) == {"stored-hash"}
+    assert "DEMO_SEED_PASSWORD_HASH is not set" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +251,7 @@ def _user(org_id: uuid.UUID, roles: list[str]):
 
 async def _post(user, is_demo: bool):
     reset = AsyncMock(return_value={"deleted": {"patients": 3}, "seeded": {"patients": 50}})
-    with patch("scripts.reset_demo_tenant.reset_demo_tenant", reset):
+    with patch("app.core.demo_tenant.reset.reset_demo_tenant", reset):
         transport = ASGITransport(app=_endpoint_app(user, is_demo))
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post("/api/v1/organizations/current/demo-reset")
@@ -260,7 +306,7 @@ def test_nightly_beat_entry_points_at_the_registered_task():
 def test_task_reports_skipped_when_refused():
     from app.core.background.tasks.demo_tasks import reset_demo_tenant_nightly
 
-    with patch("scripts.reset_demo_tenant.run_reset",
+    with patch("app.core.demo_tenant.reset.run_reset",
                AsyncMock(side_effect=DemoResetRefused("no demo org"))):
         assert reset_demo_tenant_nightly.run()["status"] == "skipped"
 
@@ -268,7 +314,7 @@ def test_task_reports_skipped_when_refused():
 def test_task_resets():
     from app.core.background.tasks.demo_tasks import reset_demo_tenant_nightly
 
-    with patch("scripts.reset_demo_tenant.run_reset",
+    with patch("app.core.demo_tenant.reset.run_reset",
                AsyncMock(return_value={"deleted": {}, "seeded": {}})):
         assert reset_demo_tenant_nightly.run()["status"] == "reset"
 
