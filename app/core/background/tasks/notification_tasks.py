@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from app.core.background.celery_app import celery_app
@@ -10,11 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="app.core.background.tasks.notification_tasks.send_appointment_reminders", bind=True, max_retries=3)
-def send_appointment_reminders(self, hours_before: int = 24) -> dict:
-    """Periodic task: fetch upcoming appointments and send reminders."""
-    logger.info("Running appointment reminder task for %dh window", hours_before)
-    # Database query and notification dispatch implemented in Phase 8
-    return {"status": "scheduled", "hours_before": hours_before}
+def send_appointment_reminders(self, hours_before: int | None = None) -> dict:
+    """Periodic task: send reminders for appointments starting within `hours_before`
+    hours (default: settings.REMINDER_LEAD_HOURS). Does nothing unless
+    REMINDERS_ENABLED is true. Safe to retry or run concurrently: each
+    appointment + reminder kind is claimed in appointment_reminders before sending."""
+    from app.config import settings
+    from app.modules.notifications.reminders import run_appointment_reminders
+
+    return asyncio.run(run_appointment_reminders(hours_before, settings=settings))
 
 
 @celery_app.task(bind=True, max_retries=3)
