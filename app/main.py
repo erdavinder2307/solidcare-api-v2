@@ -18,6 +18,7 @@ from app.core.exceptions.handlers import (
     validation_exception_handler,
 )
 from app.core.middleware.audit import AuditMiddleware
+from app.core.middleware.demo_guard import DemoGuardMiddleware
 from app.core.middleware.rate_limit import RateLimitMiddleware
 from app.core.middleware.tenant import TenantContextMiddleware
 
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
 
     # ── Middleware (order matters: the LAST added is the outermost) ───────────
     # CORS is not added here: _CORSWrappedFastAPI wraps it around the whole stack.
+    app.add_middleware(DemoGuardMiddleware)  # innermost, so blocked demo attempts are still audited
     app.add_middleware(AuditMiddleware)
     app.add_middleware(TenantContextMiddleware)
     app.add_middleware(RateLimitMiddleware)

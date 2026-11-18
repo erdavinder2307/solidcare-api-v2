@@ -46,6 +46,7 @@ class AppointmentService:
             appointment_time=appointment.start_time,
             patient_phone=patient.phone if patient else "",
             patient_email=patient.email if patient else None,
+            org_id=org_id,
         ))
 
         return appointment

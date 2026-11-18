@@ -5,7 +5,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.organizations.models import Membership, MembershipStatus
+from app.modules.organizations.models import Membership, MembershipStatus, Organization
 from app.modules.users.models import Permission, Role, User, UserRole
 
 
@@ -20,6 +20,12 @@ class AuthRepository:
             .options(selectinload(User.user_roles).selectinload(UserRole.role).selectinload(Role.role_permissions).selectinload(RolePermission.permission))  # noqa: F821
         )
         return result.scalar_one_or_none()
+
+    async def is_demo_org(self, org_id: uuid.UUID) -> bool:
+        result = await self.session.execute(
+            select(Organization.is_demo).where(Organization.id == org_id)
+        )
+        return result.scalar_one_or_none() is True
 
     async def get_user_by_id(self, user_id: uuid.UUID) -> User | None:
         result = await self.session.execute(

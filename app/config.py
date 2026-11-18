@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # Observability
     APPLICATIONINSIGHTS_CONNECTION_STRING: str = ""
 
+    # Demo tenant (SE-4193): bcrypt hash restored on the seeded demo staff logins by
+    # every demo reset. Empty = keep their current password (a warning is logged).
+    DEMO_SEED_PASSWORD_HASH: str = ""
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: str | list) -> list[str]:

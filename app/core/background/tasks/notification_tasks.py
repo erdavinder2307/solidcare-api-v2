@@ -18,16 +18,18 @@ def send_appointment_reminders(self, hours_before: int = 24) -> dict:
 
 
 @celery_app.task(bind=True, max_retries=3)
-def send_email_notification(self, to_email: str, template: str, context: dict) -> bool:
+def send_email_notification(
+    self, to_email: str, template: str, context: dict, org_id: str | None = None
+) -> bool:
     logger.info("Sending email to %s via template %s", to_email, template)
     subject = context.get("subject") or f"Solidcare notification: {template.replace('_', ' ').title()}"
     body_text = context.get("body") or "You have a new update from Solidcare."
     body_html = context.get("html")
-    return send_email_via_sendgrid(to_email, subject, body_text, body_html)
+    return send_email_via_sendgrid(to_email, subject, body_text, body_html, org_id=org_id)
 
 
 @celery_app.task(bind=True, max_retries=3)
-def send_sms_notification(self, phone: str, template: str, context: dict) -> bool:
+def send_sms_notification(self, phone: str, template: str, context: dict, org_id: str | None = None) -> bool:
     logger.info("Sending SMS to %s via template %s", phone, template)
     message = context.get("message") or context.get("body") or "You have an update from Solidcare."
-    return send_sms_via_msg91(phone, message)
+    return send_sms_via_msg91(phone, message, org_id=org_id)
