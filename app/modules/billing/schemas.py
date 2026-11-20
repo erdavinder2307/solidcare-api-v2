@@ -87,6 +87,12 @@ class PaymentCreate(BaseModel):
     notes: str | None = None
 
 
+class RefundCreate(BaseModel):
+    amount: float = Field(gt=0)
+    reason: str = Field(min_length=1, max_length=500)
+    payment_method: PaymentMethod | None = None
+
+
 class PaymentResponse(BaseModel):
     id: uuid.UUID
     invoice_id: uuid.UUID

@@ -146,7 +146,7 @@ class PatientService:
         await self.repo.session.flush()
         await self.repo.session.refresh(doc)
         try:
-            doc.download_url = get_sas_url(blob_name)
+            doc.download_url = await get_sas_url(blob_name)
         except Exception:
             doc.download_url = None
         return doc
@@ -169,7 +169,7 @@ class PatientService:
         docs = list(result.scalars().all())
         for doc in docs:
             try:
-                doc.download_url = get_sas_url(doc.blob_path)
+                doc.download_url = await get_sas_url(doc.blob_path)
             except Exception:
                 doc.download_url = None
         return docs
