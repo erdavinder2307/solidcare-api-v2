@@ -5,9 +5,10 @@ Builds and upserts the synthetic demo tenant: one demo organization
 receptionist) and about 50 synthetic patients with roughly six months of history
 (appointments, encounters, prescriptions, invoices and payments).
 
-Lives in the app package so it ships in the deploy package and can be used by the
-reset (core/demo_tenant/reset.py), the nightly Celery task and the API endpoint.
-The CLI is ``python -m scripts.seed_demo_tenant``.
+Used only by the two CLIs, which a person runs by hand (dry run first, then for
+real): ``python -m scripts.seed_demo_tenant`` and ``python -m scripts.reset_demo_tenant``
+(core/demo_tenant/reset.py). Nothing the deployed API imports at startup or at request
+time touches this package, so Faker (dev/CLI only) is not in requirements-deploy.txt.
 
 Safety:
 - Only ever writes rows for the fixed demo org/clinic below. Every row in the plan is
@@ -26,6 +27,7 @@ Data generation is pure (``build_plan``) so it is unit-tested without a database
 
 from __future__ import annotations
 
+import logging
 import random
 import re
 import uuid
@@ -37,6 +39,7 @@ from zoneinfo import ZoneInfo
 
 from faker import Faker
 
+from app.config import settings
 from app.modules.appointments.models import (
     AppointmentStatus,
     AppointmentType,
@@ -68,6 +71,9 @@ DEFAULT_PATIENTS = 50
 HISTORY_DAYS = 182
 UPCOMING_DAYS = 7
 PASSWORD_ENV = "DEMO_SEED_PASSWORD"
+PASSWORD_HASH_SETTING = "DEMO_SEED_PASSWORD_HASH"
+
+logger = logging.getLogger(__name__)
 
 # RBAC seed roles (migration c4e8a1b2d903). Their permissions are copied onto
 # demo-org roles, because permissions are resolved per org at login.
@@ -121,6 +127,47 @@ SLOTS = [time(9 + (15 * i) // 60, (15 * i) % 60) for i in range(16)]  # 09:00 â€
 
 class DemoSeedRefused(RuntimeError):
     """The target database is not safe to seed (e.g. the org is not a demo org)."""
+
+
+class DemoConfigError(RuntimeError):
+    """A demo-tenant setting is malformed (e.g. DEMO_SEED_PASSWORD_HASH is not bcrypt)."""
+
+
+def configured_password_hash() -> str | None:
+    """The fixed staff password hash from DEMO_SEED_PASSWORD_HASH, or None when unset.
+
+    Raises DemoConfigError for a value that is not a bcrypt hash, so a typo can never
+    lock every demo viewer out of the shared logins.
+    """
+    from app.core.security.password import pwd_context
+
+    value = (settings.DEMO_SEED_PASSWORD_HASH or "").strip()
+    if not value:
+        return None
+    if pwd_context.identify(value, required=False) != "bcrypt":
+        raise DemoConfigError(
+            f"{PASSWORD_HASH_SETTING} is set but is not a valid bcrypt hash; "
+            "fix it or unset it")
+    return value
+
+
+def resolve_password_hash(password: str | None) -> str | None:
+    """The one staff-password source shared by the seed and reset CLIs.
+
+    An explicit ``password`` (``--password`` / DEMO_SEED_PASSWORD) is hashed and wins;
+    otherwise the DEMO_SEED_PASSWORD_HASH setting; otherwise None (the seed then needs
+    a password, the reset keeps the current one). A malformed DEMO_SEED_PASSWORD_HASH
+    raises DemoConfigError even when an explicit password is given.
+    """
+    configured = configured_password_hash()
+    if not password:
+        return configured
+    from app.core.security.password import hash_password, verify_password
+
+    if configured and not verify_password(password, configured):
+        logger.warning("The given password differs from %s: the next demo reset will "
+                       "restore the %s password", PASSWORD_HASH_SETTING, PASSWORD_HASH_SETTING)
+    return hash_password(password)
 
 
 @dataclass

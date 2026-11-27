@@ -88,7 +88,9 @@ class Settings(BaseSettings):
     APPLICATIONINSIGHTS_CONNECTION_STRING: str = ""
 
     # Demo tenant (SE-4193): bcrypt hash restored on the seeded demo staff logins by
-    # every demo reset. Empty = keep their current password (a warning is logged).
+    # every demo reset (and used by the seed CLI when no password is given). Only the
+    # two CLIs in scripts/ read it. Empty = the reset keeps the current password (with
+    # a warning); the seed then needs DEMO_SEED_PASSWORD or --password.
     DEMO_SEED_PASSWORD_HASH: str = ""
 
     @field_validator("CORS_ORIGINS", mode="before")
