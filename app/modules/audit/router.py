@@ -3,6 +3,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -11,6 +12,7 @@ from app.modules.audit.schemas import AuditLogResponse
 from app.modules.audit.service import AuditService
 from app.modules.auth.dependencies import AuthRequired
 from app.shared.schemas.pagination import PaginatedResponse, PaginationParams
+from app.shared.utils.csv_export import csv_response
 
 router = APIRouter(prefix="/audit", tags=["Audit Logs"])
 
@@ -42,3 +44,25 @@ async def list_audit_logs(
         from_date=from_date,
         to_date=to_date,
     )
+
+
+@router.get("/export")
+async def export_audit_logs(
+    current_user: AuthRequired,
+    service: Annotated[AuditService, Depends(get_service)],
+    user_id: uuid.UUID | None = None,
+    resource_type: str | None = None,
+    action: str | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> StreamingResponse:
+    current_user.require("audit:read")
+    csv_text = await service.export_csv(
+        current_user.org_id,
+        user_id=user_id,
+        resource_type=resource_type,
+        action=action,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    return csv_response(csv_text, "audit-logs")
