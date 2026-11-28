@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -49,12 +49,14 @@ class ConsentType(str, Enum):
 
 class Patient(BaseModel):
     __tablename__ = "patients"
+    # UHIDs are numbered per organization (PT000001, ...), so unique per organization only.
+    __table_args__ = (UniqueConstraint("organization_id", "uhid", name="uq_patients_org_uhid"),)
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
     )
     # Unique patient identifier within the organization
-    uhid: Mapped[str] = mapped_column(String(30), nullable=False, unique=True, index=True)
+    uhid: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     date_of_birth: Mapped[date | None] = mapped_column(Date)
