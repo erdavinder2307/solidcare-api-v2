@@ -5,10 +5,10 @@ appointments, encounters, prescriptions, invoices, payments, notifications,
 doctors, service charges and staff accounts that visitors created) and then
 re-runs the demo seed (core/demo_tenant/seed.py), all in ONE transaction.
 
-Lives in the app package so it ships in the deploy package. Used by the nightly
-Celery task (core/background/tasks/demo_tasks.py), the "Reset demo data" endpoint
-(POST /api/v1/organizations/current/demo-reset) and the CLI
-(``python -m scripts.reset_demo_tenant``).
+Run only by hand through the CLI (``python -m scripts.reset_demo_tenant --dry-run``
+first, then without the flag): there is no scheduled job and no API endpoint. The
+deployed API never imports this package (it needs Faker, which is not in
+requirements-deploy.txt).
 
 Safety:
 - Only the seeded demo org (DEMO_ORG_ID) can be reset, and only when it exists
@@ -20,13 +20,15 @@ Safety:
   them), roles of other orgs, permissions, audit logs, the seeded staff logins,
   superadmins, and any user who also has a membership in another org.
 - Runs with the demo org's RLS context (SET LOCAL app.current_org_id) and an
-  advisory lock, so a nightly run and an on-demand reset cannot interleave.
+  advisory lock, so two resets (or a reset and a seed) cannot interleave.
 
-Staff password: the seeded staff logins get, in order of precedence, the hash of
-an explicit new password (CLI ``--password`` / DEMO_SEED_PASSWORD), else the fixed
+Staff password (same source as the seed CLI, see seed.resolve_password_hash): the
+seeded staff logins get, in order of precedence, the hash of an explicit new
+password (CLI ``--password`` / DEMO_SEED_PASSWORD), else the fixed
 ``DEMO_SEED_PASSWORD_HASH`` setting, so a visitor who changed a demo login's
 password is undone by the next reset. With neither set, the admin's current hash
-is kept and a warning is logged.
+is kept and a warning is logged. A malformed DEMO_SEED_PASSWORD_HASH raises
+DemoConfigError before anything is written.
 """
 
 from __future__ import annotations
@@ -45,6 +47,8 @@ from app.core.demo_tenant.seed import (
     _id,
     apply_plan,
     build_plan,
+    configured_password_hash,
+    resolve_password_hash,
     validate_plan,
 )
 
@@ -58,7 +62,7 @@ class DemoResetRefused(RuntimeError):
     """The target org is not the demo tenant (or is not ready to be reset)."""
 
 
-# Lightweight table stubs: no ORM mapper registry needed (works in Celery workers).
+# Lightweight table stubs: no ORM mapper registry needed.
 def _t(name: str, *cols: str):
     return table(name, *(column(c) for c in ("id", *cols)))
 
@@ -171,22 +175,6 @@ async def _current_password_hash(session: Any, org_id: uuid.UUID) -> str:
     raise DemoResetRefused("no seeded demo staff login found; run `python -m scripts.seed_demo_tenant` first")
 
 
-def configured_password_hash() -> str | None:
-    """The fixed staff password hash from DEMO_SEED_PASSWORD_HASH, or None when unset.
-
-    Raises DemoResetRefused for a value that is not a bcrypt hash, so a typo can
-    never lock every demo viewer out of the shared logins.
-    """
-    from app.core.security.password import pwd_context
-
-    value = (settings.DEMO_SEED_PASSWORD_HASH or "").strip()
-    if not value:
-        return None
-    if pwd_context.identify(value, required=False) != "bcrypt":
-        raise DemoResetRefused("DEMO_SEED_PASSWORD_HASH is set but is not a bcrypt hash")
-    return value
-
-
 async def reset_demo_tenant(session: Any, org_id: uuid.UUID = DEMO_ORG_ID, *,
                             today: date | None = None,
                             password_hash: str | None = None) -> dict[str, Any]:
@@ -221,14 +209,11 @@ async def reset_demo_tenant(session: Any, org_id: uuid.UUID = DEMO_ORG_ID, *,
 
 
 async def run_reset(password: str | None = None) -> dict[str, Any]:
-    """Open a short-lived engine (safe under Celery's per-task event loop) and reset."""
+    """Open a short-lived engine and reset (the CLI entry point)."""
     from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.pool import NullPool
 
-    password_hash = None
-    if password:
-        from app.core.security.password import hash_password
-        password_hash = hash_password(password)
+    password_hash = resolve_password_hash(password)  # DemoConfigError before any DB access
 
     engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
     try:

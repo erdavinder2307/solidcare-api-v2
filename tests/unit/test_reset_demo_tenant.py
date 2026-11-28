@@ -4,7 +4,7 @@ Unit tests for the demo-tenant reset (SE-4193, D4).
 Proves the reset can only ever touch the seeded demo org: it refuses any other org
 before writing, and every DELETE it issues is filtered to the demo org. Statements
 are compiled for Postgres against a fake session, never executed. Also covers the
-admin-only "Reset demo data" endpoint, the nightly Celery beat entry and the CLI.
+password-source rules and the CLI (the only entry point: no endpoint, no Celery job).
 """
 
 from __future__ import annotations
@@ -14,8 +14,6 @@ from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy.dialects import postgresql
 
 from app.core.demo_tenant.reset import (
@@ -24,7 +22,13 @@ from app.core.demo_tenant.reset import (
     delete_statements,
     reset_demo_tenant,
 )
-from app.core.demo_tenant.seed import DEMO_ORG_ID, DEMO_ORG_SLUG, SOURCE_ROLE_IDS, build_plan
+from app.core.demo_tenant.seed import (
+    DEMO_ORG_ID,
+    DEMO_ORG_SLUG,
+    SOURCE_ROLE_IDS,
+    DemoConfigError,
+    build_plan,
+)
 from scripts.reset_demo_tenant import main
 
 TODAY = date(2026, 11, 12)
@@ -193,12 +197,12 @@ async def test_explicit_password_hash_wins_over_the_setting(monkeypatch):
     assert _seeded_hashes(session) == {"cli-hash"}
 
 
-async def test_invalid_configured_hash_refuses_before_any_write(monkeypatch):
+async def test_invalid_configured_hash_is_a_config_error_before_any_write(monkeypatch):
     from app.config import settings
 
     monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", "not-a-bcrypt-hash")
     session = FakeSession()
-    with pytest.raises(DemoResetRefused, match="DEMO_SEED_PASSWORD_HASH"):
+    with pytest.raises(DemoConfigError, match="DEMO_SEED_PASSWORD_HASH"):
         await reset_demo_tenant(session, DEMO_ORG_ID, today=TODAY)
     assert not any(s.startswith(("DELETE", "INSERT")) for s in session.sql())
 
@@ -215,125 +219,70 @@ async def test_unset_hash_keeps_current_password_and_warns(monkeypatch, caplog):
 
 
 # ---------------------------------------------------------------------------
-# "Reset demo data" endpoint
-# ---------------------------------------------------------------------------
-
-
-def _endpoint_app(user, is_demo: bool):
-    from app.core.exceptions.errors import SolidcareException
-    from app.core.exceptions.handlers import solidcare_exception_handler
-    from app.database import get_db
-    from app.modules.auth.dependencies import get_current_user
-    from app.modules.organizations.router import router
-
-    session = MagicMock()
-    lookup = MagicMock()
-    lookup.scalar_one_or_none.return_value = is_demo
-    session.execute = AsyncMock(return_value=lookup)
-
-    async def _db():
-        yield session
-
-    app = FastAPI()
-    app.add_exception_handler(SolidcareException, solidcare_exception_handler)
-    app.include_router(router, prefix="/api/v1")
-    app.dependency_overrides[get_current_user] = lambda: user
-    app.dependency_overrides[get_db] = _db
-    return app
-
-
-def _user(org_id: uuid.UUID, roles: list[str]):
-    from app.modules.auth.dependencies import CurrentUser
-
-    return CurrentUser(user_id=uuid.uuid4(), email="x@demo.example.com", org_id=org_id,
-                       clinic_ids=[], permissions=[], roles=roles)
-
-
-async def _post(user, is_demo: bool):
-    reset = AsyncMock(return_value={"deleted": {"patients": 3}, "seeded": {"patients": 50}})
-    with patch("app.core.demo_tenant.reset.reset_demo_tenant", reset):
-        transport = ASGITransport(app=_endpoint_app(user, is_demo))
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/organizations/current/demo-reset")
-    return resp, reset
-
-
-async def test_endpoint_403_for_non_admin_in_demo_org():
-    resp, reset = await _post(_user(DEMO_ORG_ID, ["doctor"]), is_demo=True)
-    assert resp.status_code == 403
-    reset.assert_not_awaited()
-
-
-async def test_endpoint_403_for_admin_of_a_real_org():
-    resp, reset = await _post(_user(OTHER_ORG, ["admin"]), is_demo=False)
-    assert resp.status_code == 403
-    assert "demo clinic" in resp.json()["detail"]
-    reset.assert_not_awaited()
-
-
-async def test_endpoint_resets_for_demo_admin():
-    resp, reset = await _post(_user(DEMO_ORG_ID, ["admin"]), is_demo=True)
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "reset"
-    assert reset.await_args.args[1] == DEMO_ORG_ID
-
-
-def test_demo_guard_lets_the_reset_post_through():
-    from app.core.middleware.demo_guard import is_destructive
-
-    assert not is_destructive("POST", "/api/v1/organizations/current/demo-reset")
-
-
-# ---------------------------------------------------------------------------
-# Nightly beat entry and task
-# ---------------------------------------------------------------------------
-
-
-def test_nightly_beat_entry_points_at_the_registered_task():
-    from celery.schedules import crontab
-
-    from app.core.background.celery_app import celery_app
-    from app.core.background.tasks.demo_tasks import RESET_TASK_NAME
-
-    entry = celery_app.conf.beat_schedule["demo-tenant-reset-nightly"]
-    assert entry["task"] == RESET_TASK_NAME
-    assert isinstance(entry["schedule"], crontab)
-    assert entry["schedule"].hour == {3}
-    assert RESET_TASK_NAME in celery_app.tasks
-    assert "app.core.background.tasks.demo_tasks" in celery_app.conf.include
-
-
-def test_task_reports_skipped_when_refused():
-    from app.core.background.tasks.demo_tasks import reset_demo_tenant_nightly
-
-    with patch("app.core.demo_tenant.reset.run_reset",
-               AsyncMock(side_effect=DemoResetRefused("no demo org"))):
-        assert reset_demo_tenant_nightly.run()["status"] == "skipped"
-
-
-def test_task_resets():
-    from app.core.background.tasks.demo_tasks import reset_demo_tenant_nightly
-
-    with patch("app.core.demo_tenant.reset.run_reset",
-               AsyncMock(return_value={"deleted": {}, "seeded": {}})):
-        assert reset_demo_tenant_nightly.run()["status"] == "reset"
-
-
-# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 
-def test_cli_dry_run_needs_no_db(capsys):
+@pytest.fixture
+def no_password_env(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.delenv("DEMO_SEED_PASSWORD", raising=False)
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", "")
+
+
+def test_cli_dry_run_needs_no_db(capsys, no_password_env):
     with patch("scripts.reset_demo_tenant.run_reset") as run:
         assert main(["--dry-run"]) == 0
     run.assert_not_called()
     out = capsys.readouterr().out
     assert "patients" in out and "Dry run" in out
+    assert "DEMO_SEED_PASSWORD_HASH is not set" in out  # says where the password comes from
 
 
-def test_cli_reports_refusal(capsys, monkeypatch):
-    monkeypatch.delenv("DEMO_SEED_PASSWORD", raising=False)
+def test_cli_dry_run_reports_the_configured_hash(capsys, no_password_env, monkeypatch):
+    from app.config import settings
+    from app.core.security.password import hash_password
+
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", hash_password("demo-password-1"))
+    with patch("scripts.reset_demo_tenant.run_reset") as run:
+        assert main(["--dry-run"]) == 0
+    run.assert_not_called()
+    assert "restored from DEMO_SEED_PASSWORD_HASH" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("args", [[], ["--dry-run"]])
+def test_cli_invalid_hash_is_a_clear_config_error(capsys, no_password_env, monkeypatch, args):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", "not-a-bcrypt-hash")
+    with patch("scripts.reset_demo_tenant.run_reset") as run:
+        assert main(args) == 2
+    run.assert_not_called()
+    err = capsys.readouterr().err
+    assert "Config error" in err and "DEMO_SEED_PASSWORD_HASH" in err and "bcrypt" in err
+    assert "not-a-bcrypt-hash" not in err  # never echo the configured value
+
+
+async def test_run_reset_rejects_an_invalid_hash_before_opening_a_connection(monkeypatch):
+    from app.config import settings
+    from app.core.demo_tenant.reset import run_reset
+
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", "not-a-bcrypt-hash")
+    with patch("sqlalchemy.ext.asyncio.create_async_engine") as create_engine:
+        with pytest.raises(DemoConfigError):
+            await run_reset()
+    create_engine.assert_not_called()
+
+
+def test_cli_rejects_a_short_password(capsys, no_password_env):
+    with patch("scripts.reset_demo_tenant.run_reset") as run:
+        assert main(["--password", "short"]) == 2
+    run.assert_not_called()
+    assert "at least 8 characters" in capsys.readouterr().err
+
+
+def test_cli_reports_refusal(capsys, no_password_env):
     with patch("scripts.reset_demo_tenant.run_reset",
                AsyncMock(side_effect=DemoResetRefused("is_demo = false"))):
         assert main([]) == 1

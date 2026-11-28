@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.dialects import postgresql
@@ -23,10 +23,12 @@ from app.core.demo_tenant.seed import (
     HISTORY_DAYS,
     SOURCE_ROLE_IDS,
     UPCOMING_DAYS,
+    DemoConfigError,
     DemoSeedRefused,
     apply_plan,
     build_plan,
     check_target_org,
+    resolve_password_hash,
     validate_plan,
 )
 from app.modules.appointments.models import AppointmentStatus
@@ -185,13 +187,87 @@ async def test_apply_sets_rls_context_and_upserts_every_table(plan):
     assert {v for k, v in params.items() if k.startswith("hashed_password")} == {"hash"}
 
 
-def test_dry_run_needs_no_db_or_password(capsys, monkeypatch):
+@pytest.fixture
+def no_password_env(monkeypatch):
+    from app.config import settings
+
     monkeypatch.delenv("DEMO_SEED_PASSWORD", raising=False)
-    assert main(["--dry-run"]) == 0
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", "")
+
+
+def _set_hash_setting(monkeypatch, value: str) -> None:
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "DEMO_SEED_PASSWORD_HASH", value)
+
+
+def test_dry_run_needs_no_db_or_password(capsys, no_password_env):
+    with patch("scripts.seed_demo_tenant._run") as run:
+        assert main(["--dry-run"]) == 0
+    run.assert_not_called()
     out = capsys.readouterr().out
     assert "patients" in out and "Dry run" in out
+    assert "Staff password: not set" in out
 
 
-def test_real_run_requires_password(monkeypatch):
-    monkeypatch.delenv("DEMO_SEED_PASSWORD", raising=False)
-    assert main([]) == 2
+def test_real_run_requires_a_password_source(capsys, no_password_env):
+    with patch("scripts.seed_demo_tenant._run") as run:
+        assert main([]) == 2
+    run.assert_not_called()
+    assert "DEMO_SEED_PASSWORD_HASH" in capsys.readouterr().err
+
+
+def test_real_run_uses_the_configured_hash_when_no_password_is_given(no_password_env, monkeypatch):
+    from app.core.security.password import hash_password
+
+    fixed = hash_password("demo-password-1")
+    _set_hash_setting(monkeypatch, fixed)
+    run = AsyncMock(return_value="create")
+    with patch("scripts.seed_demo_tenant._run", run):
+        assert main([]) == 0
+    assert run.await_args.args[1] == fixed  # the same hash every later reset restores
+
+
+def test_explicit_password_is_hashed_and_wins(no_password_env, monkeypatch):
+    from app.core.security.password import verify_password
+
+    run = AsyncMock(return_value="create")
+    with patch("scripts.seed_demo_tenant._run", run):
+        assert main(["--password", "another-password"]) == 0
+    assert verify_password("another-password", run.await_args.args[1])
+
+
+def test_short_password_is_rejected(capsys, no_password_env):
+    with patch("scripts.seed_demo_tenant._run") as run:
+        assert main(["--password", "short"]) == 2
+    run.assert_not_called()
+    assert "at least 8 characters" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("args", [[], ["--dry-run"], ["--password", "another-password"]])
+def test_invalid_hash_is_a_clear_config_error(capsys, no_password_env, monkeypatch, args):
+    _set_hash_setting(monkeypatch, "not-a-bcrypt-hash")
+    with patch("scripts.seed_demo_tenant._run") as run:
+        assert main(args) == 2
+    run.assert_not_called()
+    err = capsys.readouterr().err
+    assert "Config error" in err and "DEMO_SEED_PASSWORD_HASH" in err
+    assert "not-a-bcrypt-hash" not in err
+
+
+def test_resolve_password_hash_sources(no_password_env, monkeypatch, caplog):
+    from app.core.security.password import hash_password, verify_password
+
+    assert resolve_password_hash(None) is None  # nothing set
+    fixed = hash_password("demo-password-1")
+    _set_hash_setting(monkeypatch, fixed)
+    assert resolve_password_hash(None) == fixed
+    with caplog.at_level("WARNING", logger="app.core.demo_tenant.seed"):
+        assert resolve_password_hash("demo-password-1") != fixed  # fresh salt, same password
+        assert "differs" not in caplog.text
+        explicit = resolve_password_hash("another-password")
+    assert verify_password("another-password", explicit)
+    assert "next demo reset will restore" in caplog.text  # the override is flagged
+    _set_hash_setting(monkeypatch, "not-a-bcrypt-hash")
+    with pytest.raises(DemoConfigError):
+        resolve_password_hash(None)
